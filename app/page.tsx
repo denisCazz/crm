@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient, User } from "@supabase/supabase-js";
+import { ToastProvider, useToast } from "../components/Toaster";
+import LoginForm from "../components/LoginForm";
 
 // Supabase client (browser)
 const supabase = createClient(
@@ -17,11 +19,9 @@ function getDisplayName(user: User | null): string {
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
-export default function Page() {
+function MainApp() {
   const [user, setUser] = useState<User | null>(null);
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [error, setError] = useState<string | null>(null);
+  const { push } = useToast();
 
   // Aggiorna il titolo della pagina in base all'utente
   useEffect(() => {
@@ -39,127 +39,46 @@ export default function Page() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function handleAuth(e: React.FormEvent) {
-    e.preventDefault();
-    if (submitting) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      if (authMode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: form.email,
-          password: form.password,
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email: form.email,
-          password: form.password,
-        });
-        if (error) throw error;
-        // Messaggio chiaro se usi email confirmation
-        setError("Registrazione riuscita. Controlla l'email per confermare l'account.");
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSubmitting(false);
-    }
+  async function handleLogout() { 
+    await supabase.auth.signOut();
+    push("success", "Logout effettuato con successo!");
   }
 
-
-  const [showPwd, setShowPwd] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleLogout() { await supabase.auth.signOut(); }
-
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
-        <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 border-b border-neutral-800 mb-4 sm:mb-6">
-          <div className="flex items-center justify-between gap-3 px-4 sm:px-0 py-3">
-            <h1 className="text-lg sm:text-2xl font-semibold tracking-tight truncate">
-              {`Bitora CRM x ${getDisplayName(user)}`}
-            </h1>
-            {user ? (
-              <div className="flex items-center gap-2 sm:gap-3">
-                <span className="hidden sm:block text-sm text-neutral-400 truncate max-w-[30ch]">{user.email}</span>
-                <Link href="/mappa" className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Mappa</Link>
-                <button onClick={handleLogout} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Esci</button>
+    <>
+      {!user ? (
+        <LoginForm />
+      ) : (
+        <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+          <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+            <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 border-b border-neutral-800 mb-4 sm:mb-6">
+              <div className="flex items-center justify-between gap-3 px-4 sm:px-0 py-3">
+                <h1 className="text-lg sm:text-2xl font-semibold tracking-tight truncate">
+                  {`Bitora CRM x ${getDisplayName(user)}`}
+                </h1>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span className="hidden sm:block text-sm text-neutral-400 truncate max-w-[30ch]">{user.email}</span>
+                  <Link href="/mappa" className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Mappa</Link>
+                  <button onClick={handleLogout} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Esci</button>
+                </div>
               </div>
-            ) : null}
+            </header>
+
+            <ClientTable user={user} />
           </div>
-        </header>
 
-        {!user ? (
-          <div className="mt-6 sm:mt-10 grid place-items-center">
-            <form onSubmit={handleAuth} className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 shadow-xl">
-              <h2 className="text-base sm:text-lg font-medium mb-4">{authMode === "signin" ? "Accedi" : "Crea un account"}</h2>
+          <div className="py-6 text-center text-xs sm:text-sm text-neutral-500">Bitora · Minimal CRM</div>
+        </div>
+      )}
+    </>
+  );
+}
 
-              <label className="block text-sm text-neutral-300 mb-1">Email</label>
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
-                placeholder="you@example.com"
-                inputMode="email"
-                autoComplete="email"
-              />
-
-              <label className="block text-sm text-neutral-300 mb-1">Password</label>
-              <div className="relative mb-4">
-                <input
-                  type={showPwd ? "text" : "password"}
-                  required
-                  value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600 pr-20"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  aria-label="Password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPwd((s) => !s)}
-                  aria-label={showPwd ? "Nascondi password" : "Mostra password"}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 text-sm"
-                >
-                  {showPwd ? "Nascondi" : "Mostra"}
-                </button>
-              </div>
-
-              {error && (
-                <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{error}</div>
-              )}
-
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3">
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  aria-busy={submitting}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium disabled:opacity-60"
-                >
-                  {submitting ? "Attendere…" : (authMode === "signin" ? "Accedi" : "Registrati")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
-                  className="w-full sm:w-auto px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm"
-                >
-                  {authMode === "signin" ? "Crea account" : "Ho già un account"}
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : (
-          <ClientTable user={user} />
-        )}
-      </div>
-
-      <div className="py-6 text-center text-xs sm:text-sm text-neutral-500">Bitora · Minimal CRM</div>
-    </div>
+export default function Page() {
+  return (
+    <ToastProvider>
+      <MainApp />
+    </ToastProvider>
   );
 }
 
@@ -180,6 +99,7 @@ function ClientTable({ user }: { user: User }) {
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
+  const { push } = useToast();
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(query), 150);
     return () => clearTimeout(t);
@@ -332,6 +252,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "" });
   const [err, setErr] = useState<string | null>(null);
+  const { push } = useToast();
 
   async function createClient(e: React.FormEvent) {
     e.preventDefault();
@@ -368,6 +289,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
       }
 
       onCreated(data as Client);
+      push("success", "Cliente creato con successo!");
       setOpen(false);
       setForm({ first_name: "", last_name: "", address: "", notes: "" });
     } catch (e: unknown) {
@@ -433,6 +355,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
     notes: client.notes ?? "",
   });
   const [err, setErr] = useState<string | null>(null);
+  const { push } = useToast();
 
   async function updateClient(e: React.FormEvent) {
     e.preventDefault();
@@ -462,6 +385,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
       }
 
       onUpdated(data as Client);
+      push("success", "Cliente aggiornato con successo!");
       setOpen(false);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -514,6 +438,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
 function DeleteClientButton({ clientId, onDeleted }: { clientId: string; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { push } = useToast();
 
   async function doDelete() {
     // conferma nativa: perfetta su mobile
@@ -524,6 +449,7 @@ function DeleteClientButton({ clientId, onDeleted }: { clientId: string; onDelet
       const { error } = await supabase.from("clients").delete().eq("id", clientId);
       if (error) throw error;
       onDeleted();
+      push("success", "Cliente eliminato con successo!");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
