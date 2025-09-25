@@ -41,6 +41,8 @@ export default function Page() {
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     setError(null);
     try {
       if (authMode === "signin") {
@@ -55,11 +57,19 @@ export default function Page() {
           password: form.password,
         });
         if (error) throw error;
+        // Messaggio chiaro se usi email confirmation
+        setError("Registrazione riuscita. Controlla l'email per confermare l'account.");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
     }
   }
+
+
+  const [showPwd, setShowPwd] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   async function handleLogout() { await supabase.auth.signOut(); }
 
@@ -99,23 +109,39 @@ export default function Page() {
               />
 
               <label className="block text-sm text-neutral-300 mb-1">Password</label>
-              <input
-                type="password"
-                required
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
+              <div className="relative mb-4">
+                <input
+                  type={showPwd ? "text" : "password"}
+                  required
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600 pr-20"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  aria-label="Password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((s) => !s)}
+                  aria-label={showPwd ? "Nascondi password" : "Mostra password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 text-sm"
+                >
+                  {showPwd ? "Nascondi" : "Mostra"}
+                </button>
+              </div>
 
               {error && (
                 <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{error}</div>
               )}
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3">
-                <button type="submit" className="w-full px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
-                  {authMode === "signin" ? "Accedi" : "Registrati"}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  aria-busy={submitting}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium disabled:opacity-60"
+                >
+                  {submitting ? "Attendere…" : (authMode === "signin" ? "Accedi" : "Registrati")}
                 </button>
                 <button
                   type="button"
@@ -153,16 +179,21 @@ function ClientTable({ user }: { user: User }) {
   const [rows, setRows] = useState<Client[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [qDebounced, setQDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setQDebounced(query), 150);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = qDebounced.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
       [r.first_name, r.last_name, r.address, r.notes]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q))
     );
-  }, [rows, query]);
+  }, [rows, qDebounced]);
 
   useEffect(() => {
     const load = async () => {
@@ -170,6 +201,7 @@ function ClientTable({ user }: { user: User }) {
       const { data, error } = await supabase
         .from("clients")
         .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .eq("owner_id", user.id)
         .order("created_at", { ascending: false });
       if (error) setErr(error.message);
       else setRows((data as Client[]) ?? []);
