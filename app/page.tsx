@@ -99,6 +99,8 @@ type Client = {
   last_name: string | null;
   address: string | null;
   notes: string | null;
+  phone: string | null;
+  email: string | null;
   created_at: string;
 };
 
@@ -116,7 +118,7 @@ function ClientTable({ user }: { user: User }) {
     const q = qDebounced.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
-      [r.first_name, r.last_name, r.address, r.notes]
+      [r.first_name, r.last_name, r.address, r.notes, r.phone, r.email]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q))
     );
@@ -128,7 +130,7 @@ function ClientTable({ user }: { user: User }) {
       setErr(null);
       const { data, error } = await supabase
         .from("clients")
-        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .select("id, owner_id, first_name, last_name, address, notes, phone, email, created_at")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false });
       if (error) setErr(error.message);
@@ -166,13 +168,35 @@ function ClientTable({ user }: { user: User }) {
           filtered.map((c) => (
             <article key={c.id} className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="flex-1">
                   <h3 className="text-base font-medium leading-tight">
                     {(c.first_name ?? "").trim()} {(c.last_name ?? "").trim() || ""}
                   </h3>
-                  <p className="text-xs text-neutral-400 mt-0.5 break-words">
-                    {c.address ?? "—"}
-                  </p>
+                  <div className="space-y-1 mt-2">
+                    {c.phone && (
+                      <a 
+                        href={`tel:${c.phone}`}
+                        className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        <span className="text-xs">📞</span>
+                        {c.phone}
+                      </a>
+                    )}
+                    {c.email && (
+                      <a 
+                        href={`mailto:${c.email}`}
+                        className="flex items-center gap-1.5 text-sm text-green-400 hover:text-green-300 transition-colors"
+                      >
+                        <span className="text-xs">✉️</span>
+                        {c.email}
+                      </a>
+                    )}
+                    {c.address && (
+                      <p className="text-xs text-neutral-400 break-words">
+                        📍 {c.address}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="shrink-0 flex items-center gap-2">
                   <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
@@ -200,47 +224,146 @@ function ClientTable({ user }: { user: User }) {
       </div>
 
       {/* Desktop: tabella */}
-      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-neutral-800">
-        <table className="min-w-full text-sm">
+      <div className="hidden lg:block overflow-x-auto no-scrollbar rounded-2xl border border-neutral-800">
+        <table className="min-w-full text-sm table-fixed">
           <thead className="bg-neutral-900 text-neutral-300">
             <tr>
-              <th className="text-left px-4 py-3 font-medium">Nome</th>
-              <th className="text-left px-4 py-3 font-medium">Cognome</th>
-              <th className="text-left px-4 py-3 font-medium">Indirizzo</th>
-              <th className="text-left px-4 py-3 font-medium">Note</th>
-              <th className="text-right px-4 py-3 font-medium">Azioni</th>
+              <th className="text-left px-3 py-3 font-medium w-24">Nome</th>
+              <th className="text-left px-3 py-3 font-medium w-24">Cognome</th>
+              <th className="text-left px-3 py-3 font-medium w-32">📞 Telefono</th>
+              <th className="text-left px-3 py-3 font-medium w-40">✉️ Email</th>
+              <th className="text-left px-3 py-3 font-medium">📍 Indirizzo</th>
+              <th className="text-left px-3 py-3 font-medium w-32">Note</th>
+              <th className="text-right px-3 py-3 font-medium w-24">Azioni</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
+                <td colSpan={7} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
               </tr>
             ) : (
               filtered.map((c) => (
                 <tr key={c.id} className="border-t border-neutral-800 hover:bg-neutral-900/60">
-                  <td className="px-4 py-3">{c.first_name ?? "—"}</td>
-                  <td className="px-4 py-3">{c.last_name ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate max-w-[28ch]" title={c.address ?? undefined}>{c.address ?? "—"}</span>
+                  <td className="px-3 py-3 truncate">{c.first_name ?? "—"}</td>
+                  <td className="px-3 py-3 truncate">{c.last_name ?? "—"}</td>
+                  <td className="px-3 py-3">
+                    {c.phone ? (
+                      <a 
+                        href={`tel:${c.phone}`}
+                        className="text-blue-400 hover:text-blue-300 transition-colors text-xs block truncate"
+                        title={`Chiama ${c.phone}`}
+                      >
+                        {c.phone}
+                      </a>
+                    ) : (
+                      <span className="text-neutral-500">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    {c.email ? (
+                      <a 
+                        href={`mailto:${c.email}`}
+                        className="text-green-400 hover:text-green-300 transition-colors text-xs block truncate"
+                        title={`Email ${c.email}`}
+                      >
+                        {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-neutral-500">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1">
+                      <span className="truncate max-w-[20ch] text-xs" title={c.address ?? undefined}>{c.address ?? "—"}</span>
                       {c.address ? (
                         <a
                           href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-xs underline text-neutral-300 hover:text-white"
+                          className="text-xs text-neutral-400 hover:text-white shrink-0"
+                          title="Apri in Maps"
                         >
-                          Apri in Maps
+                          🗺️
                         </a>
                       ) : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="line-clamp-2 max-w-[45ch] text-neutral-300 break-words">{c.notes ?? ""}</span>
+                  <td className="px-3 py-3">
+                    <span className="line-clamp-2 max-w-[20ch] text-neutral-300 break-words text-xs" title={c.notes ?? undefined}>{c.notes ?? ""}</span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right">
                     <div className="inline-flex items-center gap-2">
+                      <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
+                      <DeleteClientButton clientId={c.id} onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))} />
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Tablet: tabella compatta */}
+      <div className="hidden sm:block lg:hidden overflow-x-auto no-scrollbar rounded-2xl border border-neutral-800">
+        <table className="min-w-full text-sm">
+          <thead className="bg-neutral-900 text-neutral-300">
+            <tr>
+              <th className="text-left px-3 py-3 font-medium">Cliente</th>
+              <th className="text-left px-3 py-3 font-medium">Contatti</th>
+              <th className="text-left px-3 py-3 font-medium">Indirizzo</th>
+              <th className="text-right px-3 py-3 font-medium">Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
+              </tr>
+            ) : (
+              filtered.map((c) => (
+                <tr key={c.id} className="border-t border-neutral-800 hover:bg-neutral-900/60">
+                  <td className="px-3 py-3">
+                    <div>
+                      <div className="font-medium">{(c.first_name ?? "").trim()} {(c.last_name ?? "").trim() || ""}</div>
+                      {c.notes && <div className="text-xs text-neutral-400 truncate mt-1">{c.notes}</div>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="space-y-1">
+                      {c.phone && (
+                        <a href={`tel:${c.phone}`} className="block text-blue-400 hover:text-blue-300 text-xs">
+                          📞 {c.phone}
+                        </a>
+                      )}
+                      {c.email && (
+                        <a href={`mailto:${c.email}`} className="block text-green-400 hover:text-green-300 text-xs">
+                          ✉️ {c.email}
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs truncate max-w-[15ch]" title={c.address ?? undefined}>
+                        {c.address ?? "—"}
+                      </span>
+                      {c.address && (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-neutral-400 hover:text-white"
+                          title="Maps"
+                        >
+                          🗺️
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right">
+                    <div className="inline-flex items-center gap-1">
                       <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
                       <DeleteClientButton clientId={c.id} onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))} />
                     </div>
@@ -258,7 +381,7 @@ function ClientTable({ user }: { user: User }) {
 function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "" });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
 
@@ -278,12 +401,14 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
         last_name: form.last_name || null,
         address: form.address || null,
         notes: form.notes || null,
+        phone: form.phone || null,
+        email: form.email || null,
       };
 
       const { data, error } = await supabase
         .from("clients")
         .insert(insert)
-        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .select("id, owner_id, first_name, last_name, address, notes, phone, email, created_at")
         .single();
 
       if (error) throw error;
@@ -300,7 +425,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
       onCreated(data as Client);
       push("success", "Cliente creato con successo!");
       setOpen(false);
-      setForm({ first_name: "", last_name: "", address: "", notes: "" });
+      setForm({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "" });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -333,6 +458,28 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
                 <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Telefono</label>
+                  <input 
+                    type="tel" 
+                    value={form.phone} 
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} 
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
+                    placeholder="+39 123 456 7890"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Email</label>
+                  <input 
+                    type="email" 
+                    value={form.email} 
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} 
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
+                    placeholder="cliente@email.com"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
                 <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
@@ -362,6 +509,8 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
     last_name: client.last_name ?? "",
     address: client.address ?? "",
     notes: client.notes ?? "",
+    phone: client.phone ?? "",
+    email: client.email ?? "",
   });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
@@ -379,9 +528,11 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
           last_name: form.last_name || null,
           address: form.address || null,
           notes: form.notes || null,
+          phone: form.phone || null,
+          email: form.email || null,
         })
         .eq("id", client.id)
-        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .select("id, owner_id, first_name, last_name, address, notes, phone, email, created_at")
         .single();
       if (error) throw error;
 
@@ -425,6 +576,28 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
                 <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Telefono</label>
+                  <input 
+                    type="tel" 
+                    value={form.phone} 
+                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} 
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
+                    placeholder="+39 123 456 7890"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Email</label>
+                  <input 
+                    type="email" 
+                    value={form.email} 
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} 
+                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
+                    placeholder="cliente@email.com"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
