@@ -5,11 +5,13 @@ import { createClient, User } from "@supabase/supabase-js";
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
 
-// Supabase client (browser)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Supabase client (browser) - initialized only on client side
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+const supabase = typeof window !== 'undefined' && supabaseUrl && supabaseKey 
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
 
 // Util: costruisce un nome leggibile dal login
 function getDisplayName(user: User | null): string {
@@ -30,16 +32,20 @@ function MainApp() {
   }, [user]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    if (!supabase) return;
+    
+    supabase.auth.getSession().then(({ data }: any) => {
       setUser(data.session?.user ?? null);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: any, newSession: any) => {
       setUser(newSession?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   async function handleLogout() { 
+    if (!supabase) return;
+    
     await supabase.auth.signOut();
     push("success", "Logout effettuato con successo!");
   }
@@ -117,6 +123,7 @@ function ClientTable({ user }: { user: User }) {
 
   useEffect(() => {
     const load = async () => {
+      if (!supabase) return;
       setErr(null);
       const { data, error } = await supabase
         .from("clients")
@@ -256,6 +263,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
 
   async function createClient(e: React.FormEvent) {
     e.preventDefault();
+    if (!supabase) return;
     setSaving(true);
     setErr(null);
     try {
@@ -361,6 +369,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
     e.preventDefault();
     setSaving(true);
     setErr(null);
+    if (!supabase) return;
     try {
       const { data, error } = await supabase
         .from("clients")
@@ -445,6 +454,7 @@ function DeleteClientButton({ clientId, onDeleted }: { clientId: string; onDelet
     if (!confirm("Sei sicuro di voler eliminare questo cliente?")) return;
     setBusy(true);
     setErr(null);
+    if (!supabase) return;
     try {
       const { error } = await supabase.from("clients").delete().eq("id", clientId);
       if (error) throw error;
