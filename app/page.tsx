@@ -69,7 +69,7 @@ export default function Page() {
       <div className="max-w-5xl mx-auto p-6">
         <header className="flex items-center justify-between gap-4 pb-6 border-b border-neutral-800">
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
-            {`Bitora CRM x ${getDisplayName(user)}`}
+            Bitora CRM - Powered by Denis Cazzulo
           </h1>
           {user ? (
             <div className="flex items-center gap-3">
@@ -233,6 +233,10 @@ function ClientTable({ user }: { user: User }) {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
+                      <DeleteClientButton
+                        clientId={c.id}
+                        onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))}
+                      />
                   </td>
                 </tr>
               ))
@@ -339,6 +343,46 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
     </>
   );
 }
+
+function DeleteClientButton({
+  clientId,
+  onDeleted,
+}: {
+  clientId: string;
+  onDeleted: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function doDelete() {
+    if (!confirm("Sei sicuro di voler eliminare questo cliente?")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { error } = await supabase.from("clients").delete().eq("id", clientId);
+      if (error) throw error;
+      onDeleted();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <button
+        onClick={doDelete}
+        disabled={busy}
+        className="ml-2 px-3 py-1.5 rounded-xl bg-red-900/30 border border-red-900 text-red-200 hover:bg-red-900/40 text-xs"
+      >
+        {busy ? "Eliminazione…" : "Elimina"}
+      </button>
+      {err && <span className="text-xs text-red-400">{err}</span>}
+    </div>
+  );
+}
+
 
 function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c: Client) => void }) {
   const [open, setOpen] = useState(false);
