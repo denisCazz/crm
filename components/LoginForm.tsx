@@ -1,14 +1,8 @@
 "use client";
 import React, { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useSupabase } from "../lib/supabase";
 import { useToast } from "./Toaster";
 import { AnimatedBackground } from "./AnimatedBackground";
-
-// Supabase client (browser)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export default function LoginForm() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -16,6 +10,7 @@ export default function LoginForm() {
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { push } = useToast();
+  const supabase = useSupabase();
 
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();

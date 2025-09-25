@@ -1,18 +1,11 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient, User } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
 import { AddressAutocomplete } from "../components/AddressAutocomplete";
-
-// Supabase client (browser) - initialized only on client side
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase = typeof window !== 'undefined' && supabaseUrl && supabaseKey 
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
+import { useSupabaseSafe } from "../lib/supabase";
 
 // Util: costruisce un nome leggibile dal login
 function getDisplayName(user: User | null): string {
@@ -24,7 +17,9 @@ function getDisplayName(user: User | null): string {
 
 function MainApp() {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const { push } = useToast();
+  const supabase = useSupabaseSafe();
 
   // Aggiorna il titolo della pagina in base all'utente
   useEffect(() => {
@@ -33,22 +28,34 @@ function MainApp() {
   }, [user]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     
     supabase.auth.getSession().then((response: { data: { session: { user: User } | null } | null }) => {
       setUser(response.data?.session?.user ?? null);
+      setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event: unknown, newSession: { user: User } | null) => {
       setUser(newSession?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [supabase]);
 
   async function handleLogout() { 
     if (!supabase) return;
     
     await supabase.auth.signOut();
     push("success", "Logout effettuato con successo!");
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
   }
 
   return (
@@ -110,6 +117,8 @@ function ClientTable({ user }: { user: User }) {
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
+  const supabase = useSupabaseSafe();
+  
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(query), 150);
     return () => clearTimeout(t);
@@ -138,7 +147,7 @@ function ClientTable({ user }: { user: User }) {
       else setRows((data as Client[]) ?? []);
     };
     load();
-  }, [user.id]);
+  }, [user.id, supabase]);
 
   return (
     <section className="mt-4 sm:mt-8">
@@ -385,6 +394,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
   const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "" });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
+  const supabase = useSupabaseSafe();
 
   async function createClient(e: React.FormEvent) {
     e.preventDefault();
@@ -520,6 +530,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
   });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
+  const supabase = useSupabaseSafe();
 
   async function updateClient(e: React.FormEvent) {
     e.preventDefault();
@@ -633,6 +644,7 @@ function DeleteClientButton({ clientId, onDeleted }: { clientId: string; onDelet
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
+  const supabase = useSupabaseSafe();
 
   async function doDelete() {
     // conferma nativa: perfetta su mobile
