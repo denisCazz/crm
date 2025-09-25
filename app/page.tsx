@@ -34,11 +34,11 @@ function MainApp() {
   useEffect(() => {
     if (!supabase) return;
     
-    supabase.auth.getSession().then(({ data }: any) => {
+    supabase.auth.getSession().then(({ data }: { data: any }) => {
       setUser(data.session?.user ?? null);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event: any, newSession: any) => {
-      setUser(newSession?.user ?? null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: unknown, newSession: unknown) => {
+      setUser((newSession as any)?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -105,7 +105,6 @@ function ClientTable({ user }: { user: User }) {
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
-  const { push } = useToast();
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(query), 150);
     return () => clearTimeout(t);

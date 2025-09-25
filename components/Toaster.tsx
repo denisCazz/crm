@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useId, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useId, useMemo, useState } from "react";
 
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: string; kind: ToastKind; message: string };
@@ -23,7 +23,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => remove(id), ms);
   };
 
-  const value = useMemo(() => ({ push }), []);
+  const value = useMemo(() => ({ push }), [push]);
 
   return (
     <Ctx.Provider value={value}>
