@@ -14,7 +14,6 @@ function getDisplayName(user: User | null): string {
   if (!user?.email) return "Cliente";
   const local = user.email.split("@")[0];
   if (!local) return "Cliente";
-  // Capitalizza la prima lettera del local-part
   return local.charAt(0).toUpperCase() + local.slice(1);
 }
 
@@ -66,24 +65,26 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-      <div className="max-w-5xl mx-auto p-6">
-        <header className="flex items-center justify-between gap-4 pb-6 border-b border-neutral-800">
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
-            Bitora CRM - Powered by Denis Cazzulo
-          </h1>
-          {user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-neutral-400 hidden sm:block">{user.email}</span>
-              <Link href="/mappa" className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">Mappa</Link>
-              <button onClick={handleLogout} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">Esci</button>
-            </div>
-          ) : null}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+        <header className="sticky top-0 z-10 bg-neutral-950/80 backdrop-blur supports-[backdrop-filter]:bg-neutral-950/60 border-b border-neutral-800 mb-4 sm:mb-6">
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-0 py-3">
+            <h1 className="text-lg sm:text-2xl font-semibold tracking-tight truncate">
+              {`Bitora CRM x ${getDisplayName(user)}`}
+            </h1>
+            {user ? (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="hidden sm:block text-sm text-neutral-400 truncate max-w-[30ch]">{user.email}</span>
+                <Link href="/mappa" className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Mappa</Link>
+                <button onClick={handleLogout} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs sm:text-sm">Esci</button>
+              </div>
+            ) : null}
+          </div>
         </header>
 
         {!user ? (
-          <div className="mt-10 grid place-items-center">
-            <form onSubmit={handleAuth} className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
-              <h2 className="text-lg font-medium mb-4">{authMode === "signin" ? "Accedi" : "Crea un account"}</h2>
+          <div className="mt-6 sm:mt-10 grid place-items-center">
+            <form onSubmit={handleAuth} className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+              <h2 className="text-base sm:text-lg font-medium mb-4">{authMode === "signin" ? "Accedi" : "Crea un account"}</h2>
 
               <label className="block text-sm text-neutral-300 mb-1">Email</label>
               <input
@@ -91,8 +92,10 @@ export default function Page() {
                 required
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
                 placeholder="you@example.com"
+                inputMode="email"
+                autoComplete="email"
               />
 
               <label className="block text-sm text-neutral-300 mb-1">Password</label>
@@ -101,22 +104,23 @@ export default function Page() {
                 required
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
                 placeholder="••••••••"
+                autoComplete="current-password"
               />
 
               {error && (
                 <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{error}</div>
               )}
 
-              <div className="flex items-center justify-between gap-3">
-                <button type="submit" className="w-full px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3">
+                <button type="submit" className="w-full px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
                   {authMode === "signin" ? "Accedi" : "Registrati"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
-                  className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm"
+                  className="w-full sm:w-auto px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm"
                 >
                   {authMode === "signin" ? "Crea account" : "Ho già un account"}
                 </button>
@@ -128,7 +132,7 @@ export default function Page() {
         )}
       </div>
 
-      <div className="py-8 text-center text-sm text-neutral-500">Bitora · Minimal CRM</div>
+      <div className="py-6 text-center text-xs sm:text-sm text-neutral-500">Bitora · Minimal CRM</div>
     </div>
   );
 }
@@ -174,21 +178,69 @@ function ClientTable({ user }: { user: User }) {
   }, [user.id]);
 
   return (
-    <section className="mt-8">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div className="relative flex-1 max-w-md">
+    <section className="mt-4 sm:mt-8">
+      {/* Barra azioni / ricerca */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <div className="relative flex-1 max-w-full sm:max-w-md">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Cerca per nome, indirizzo o note…"
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl pl-4 pr-10 py-2 outline-none focus:ring-2 focus:ring-neutral-600"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl pl-4 pr-10 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600"
           />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm">⌘K</span>
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 text-xs sm:text-sm">⌘K</span>
         </div>
         <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-neutral-800">
+      {/* Stato errore/empty */}
+      {err && (
+        <div className="px-4 py-3 mb-3 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl">{err}</div>
+      )}
+
+      {/* Mobile: card list */}
+      <div className="sm:hidden space-y-3">
+        {filtered.length === 0 ? (
+          <div className="text-center text-neutral-400 py-8">Nessun cliente</div>
+        ) : (
+          filtered.map((c) => (
+            <article key={c.id} className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-medium leading-tight">
+                    {(c.first_name ?? "").trim()} {(c.last_name ?? "").trim() || ""}
+                  </h3>
+                  <p className="text-xs text-neutral-400 mt-0.5 break-words">
+                    {c.address ?? "—"}
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
+                  <DeleteClientButton clientId={c.id} onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))} />
+                </div>
+              </div>
+              {c.address && (
+                <div className="mt-2">
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs underline text-neutral-300 hover:text-white"
+                  >
+                    Apri in Maps
+                  </a>
+                </div>
+              )}
+              {c.notes && (
+                <p className="text-sm text-neutral-300 mt-2 break-words">{c.notes}</p>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+
+      {/* Desktop: tabella */}
+      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-neutral-800">
         <table className="min-w-full text-sm">
           <thead className="bg-neutral-900 text-neutral-300">
             <tr>
@@ -200,11 +252,7 @@ function ClientTable({ user }: { user: User }) {
             </tr>
           </thead>
           <tbody>
-            {err ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-red-400">{err}</td>
-              </tr>
-            ) : filtered.length === 0 ? (
+            {filtered.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
               </tr>
@@ -229,14 +277,13 @@ function ClientTable({ user }: { user: User }) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="line-clamp-2 max-w-[45ch] text-neutral-300">{c.notes ?? ""}</span>
+                    <span className="line-clamp-2 max-w-[45ch] text-neutral-300 break-words">{c.notes ?? ""}</span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
-                      <DeleteClientButton
-                        clientId={c.id}
-                        onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))}
-                      />
+                    <div className="inline-flex items-center gap-2">
+                      <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
+                      <DeleteClientButton clientId={c.id} onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))} />
+                    </div>
                   </td>
                 </tr>
               ))
@@ -300,39 +347,39 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="px-3 py-2 rounded-xl bg-white/90 text-black hover:bg-white text-sm font-medium">
+      <button onClick={() => setOpen(true)} className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white text-sm font-medium">
         + Nuovo cliente
       </button>
 
       {open && (
         <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-medium mb-4">Nuovo cliente</h3>
             <form onSubmit={createClient} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-neutral-300 mb-1">Nome</label>
-                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
                 </div>
                 <div>
                   <label className="block text-sm text-neutral-300 mb-1">Cognome</label>
-                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
-                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
               </div>
 
               {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
 
               <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
+                <button type="submit" disabled={saving} className="px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
                   {saving ? "Salvataggio…" : "Salva"}
                 </button>
               </div>
@@ -343,46 +390,6 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
     </>
   );
 }
-
-function DeleteClientButton({
-  clientId,
-  onDeleted,
-}: {
-  clientId: string;
-  onDeleted: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function doDelete() {
-    if (!confirm("Sei sicuro di voler eliminare questo cliente?")) return;
-    setBusy(true);
-    setErr(null);
-    try {
-      const { error } = await supabase.from("clients").delete().eq("id", clientId);
-      if (error) throw error;
-      onDeleted();
-    } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="inline-flex flex-col items-end gap-1">
-      <button
-        onClick={doDelete}
-        disabled={busy}
-        className="ml-2 px-3 py-1.5 rounded-xl bg-red-900/30 border border-red-900 text-red-200 hover:bg-red-900/40 text-xs"
-      >
-        {busy ? "Eliminazione…" : "Elimina"}
-      </button>
-      {err && <span className="text-xs text-red-400">{err}</span>}
-    </div>
-  );
-}
-
 
 function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c: Client) => void }) {
   const [open, setOpen] = useState(false);
@@ -442,25 +449,25 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-neutral-300 mb-1">Nome</label>
-                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
                 </div>
                 <div>
                   <label className="block text-sm text-neutral-300 mb-1">Cognome</label>
-                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
-                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
               </div>
               {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
               <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
+                <button type="submit" disabled={saving} className="px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
                   {saving ? "Salvataggio…" : "Salva"}
                 </button>
               </div>
@@ -469,5 +476,39 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
         </div>
       )}
     </>
+  );
+}
+
+function DeleteClientButton({ clientId, onDeleted }: { clientId: string; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function doDelete() {
+    // conferma nativa: perfetta su mobile
+    if (!confirm("Sei sicuro di voler eliminare questo cliente?")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { error } = await supabase.from("clients").delete().eq("id", clientId);
+      if (error) throw error;
+      onDeleted();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <button
+        onClick={doDelete}
+        disabled={busy}
+        className="px-3 py-1.5 rounded-xl bg-red-900/30 border border-red-900 text-red-200 hover:bg-red-900/40 text-xs"
+      >
+        {busy ? "Eliminazione…" : "Elimina"}
+      </button>
+      {err && <span className="text-xs text-red-400">{err}</span>}
+    </div>
   );
 }
