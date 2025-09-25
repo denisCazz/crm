@@ -1,103 +1,470 @@
-import Image from "next/image";
+'use client';
+import React, { useEffect, useMemo, useState } from "react";
+import { createClient, Session, User } from "@supabase/supabase-js";
+import Link from "next/link";
 
-export default function Home() {
+const supabaseUrl = (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) || (globalThis as any).NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) || (globalThis as any).NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl!, supabaseAnonKey!);
+
+export default function LoginAndClients() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Carica sessione esistente
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setUser(data.session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Ascolta cambi sessione
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setUser(newSession?.user ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  async function handleAuth(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      if (authMode === "signin") {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: form.email,
+          password: form.password,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email: form.email,
+          password: form.password,
+        });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      setError(err.message ?? String(err));
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+      <div className="max-w-5xl mx-auto p-6">
+        <header className="flex items-center justify-between gap-4 pb-6 border-b border-neutral-800">
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Mini gestionale – Clienti</h1>
+          {user ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-neutral-400 hidden sm:block">{user.email}</span>
+              <button onClick={handleLogout} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">
+                Esci
+              </button>
+            </div>
+          ) : null}
+          <Link href="/mappa" className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">
+            Mappa Clienti
+          </Link>
+        </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        {!user ? (
+          <div className="mt-10 grid place-items-center">
+            <form onSubmit={handleAuth} className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
+              <h2 className="text-lg font-medium mb-4">{authMode === "signin" ? "Accedi" : "Crea un account"}</h2>
+
+              <label className="block text-sm text-neutral-300 mb-1">Email</label>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
+                placeholder="you@example.com"
+              />
+
+              <label className="block text-sm text-neutral-300 mb-1">Password</label>
+              <input
+                type="password"
+                required
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-neutral-600"
+                placeholder="••••••••"
+              />
+
+              {error && (
+                <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">
+                  {error}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <button type="submit" className="w-full px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+                  {authMode === "signin" ? "Accedi" : "Registrati"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
+                  className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm"
+                >
+                  {authMode === "signin" ? "Crea account" : "Ho già un account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <ClientTable user={user} />
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="py-8 text-center text-sm text-neutral-500">Made with Supabase · Dark UI</div>
     </div>
   );
 }
+
+// -----------------------------
+// Tabella Clienti
+// -----------------------------
+
+type Client = {
+  id: string;
+  owner_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  address: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+function ClientTable({ user }: { user: User }) {
+  const [rows, setRows] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) =>
+      [r.first_name, r.last_name, r.address, r.notes]
+        .filter(Boolean)
+        .some((v) => (v as string).toLowerCase().includes(q))
+    );
+  }, [rows, query]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      setErr(null);
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .order("created_at", { ascending: false });
+      if (!mounted) return;
+      if (error) {
+        setErr(error.message);
+      } else {
+        setRows(data as Client[]);
+      }
+      setLoading(false);
+    }
+    load();
+  }, [user?.id]);
+
+  return (
+    <section className="mt-8">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="relative flex-1 max-w-md">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cerca per nome, indirizzo o note…"
+            className="w-full bg-neutral-900 border border-neutral-800 rounded-2xl pl-4 pr-10 py-2 outline-none focus:ring-2 focus:ring-neutral-600"
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm">⌘K</span>
+        </div>
+        <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-neutral-800">
+        <table className="min-w-full text-sm">
+          <thead className="bg-neutral-900 text-neutral-300">
+            <tr>
+              <th className="text-left px-4 py-3 font-medium">Nome</th>
+              <th className="text-left px-4 py-3 font-medium">Cognome</th>
+              <th className="text-left px-4 py-3 font-medium">Indirizzo</th>
+              <th className="text-left px-4 py-3 font-medium">Note</th>
+              <th className="text-right px-4 py-3 font-medium">Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Caricamento…</td>
+              </tr>
+            ) : err ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-red-400">{err}</td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
+              </tr>
+            ) : (
+              filtered.map((c) => (
+                <tr key={c.id} className="border-t border-neutral-800 hover:bg-neutral-900/60">
+                  <td className="px-4 py-3">{c.first_name ?? "—"}</td>
+                  <td className="px-4 py-3">{c.last_name ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate max-w-[28ch]" title={c.address ?? undefined}>{c.address ?? "—"}</span>
+                      {c.address ? (
+                        <a
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs underline text-neutral-300 hover:text-white"
+                        >
+                          Apri in Maps
+                        </a>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="line-clamp-2 max-w-[45ch] text-neutral-300">{c.notes ?? ""}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "" });
+  const [err, setErr] = useState<string | null>(null);
+
+  async function createClient(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      const { data: who } = await supabase.auth.getUser();
+      const uid = who?.user?.id;
+      if (!uid) throw new Error("Utente non autenticato");
+
+      const insert = {
+        owner_id: uid,
+        first_name: form.first_name || null,
+        last_name: form.last_name || null,
+        address: form.address || null,
+        notes: form.notes || null,
+      };
+
+      const { data, error } = await supabase
+        .from("clients")
+        .insert(insert)
+        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .single();
+
+        if (!error && data) {
+          await fetch("/api/geocode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
+          });
+        }
+      if (error) throw error;
+      onCreated(data as Client);
+      setOpen(false);
+      setForm({ first_name: "", last_name: "", address: "", notes: "" });
+    } catch (e: any) {
+      setErr(e.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="px-3 py-2 rounded-xl bg-white/90 text-black hover:bg-white text-sm font-medium">
+        + Nuovo cliente
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium mb-4">Nuovo cliente</h3>
+            <form onSubmit={createClient} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Nome</label>
+                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Cognome</label>
+                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
+                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Note</label>
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+
+              {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+                  {saving ? "Salvataggio…" : "Salva"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c: Client) => void }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    first_name: client.first_name ?? "",
+    last_name: client.last_name ?? "",
+    address: client.address ?? "",
+    notes: client.notes ?? "",
+  });
+  const [err, setErr] = useState<string | null>(null);
+
+  async function updateClient(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      const { data, error } = await supabase
+        .from("clients")
+        .update({
+          first_name: form.first_name || null,
+          last_name: form.last_name || null,
+          address: form.address || null,
+          notes: form.notes || null,
+        })
+        .eq("id", client.id)
+        .select("id, owner_id, first_name, last_name, address, notes, created_at")
+        .single();
+        if (!error && data) {
+        // geocodifica solo se l'indirizzo è cambiato (o sempre, se vuoi semplificare)
+        if (data.address !== client.address) {
+          await fetch("/api/geocode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
+          });
+        }
+      }
+      if (error) throw error;
+      onUpdated(data as Client);
+      setOpen(false);
+    } catch (e: any) {
+      setErr(e.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs">Modifica</button>
+      {open && (
+        <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium mb-4">Modifica cliente</h3>
+            <form onSubmit={updateClient} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Nome</label>
+                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                </div>
+                <div>
+                  <label className="block text-sm text-neutral-300 mb-1">Cognome</label>
+                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
+                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Note</label>
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
+                  {saving ? "Salvataggio…" : "Salva"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/*
+-- SQL minimo per la tabella `clients` con RLS owner-based (da eseguire su Supabase)
+
+create table if not exists public.clients (
+  id         uuid primary key default gen_random_uuid(),
+  owner_id   uuid not null references auth.users(id) on delete cascade,
+  first_name text,
+  last_name  text,
+  address    text,
+  notes      text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.clients enable row level security;
+
+create index if not exists idx_clients_owner on public.clients(owner_id);
+
+-- Policy: ogni utente vede/gestisce solo i propri clienti
+create policy "owner can select" on public.clients
+  for select using (owner_id = auth.uid());
+
+create policy "owner can insert" on public.clients
+  for insert with check (owner_id = auth.uid());
+
+create policy "owner can update" on public.clients
+  for update using (owner_id = auth.uid());
+
+create policy "owner can delete" on public.clients
+  for delete using (owner_id = auth.uid());
+*/
