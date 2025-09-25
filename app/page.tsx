@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient, User } from "@supabase/supabase-js";
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
+import { AddressAutocomplete } from "../components/AddressAutocomplete";
 
 // Supabase client (browser) - initialized only on client side
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -456,7 +457,12 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
-                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <AddressAutocomplete
+                  value={form.address}
+                  onChange={(value) => setForm((f) => ({ ...f, address: value }))}
+                  placeholder="Inserisci l'indirizzo..."
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600"
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -575,7 +581,12 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
-                <input value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <AddressAutocomplete
+                  value={form.address}
+                  onChange={(value) => setForm((f) => ({ ...f, address: value }))}
+                  placeholder="Inserisci l'indirizzo..."
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600"
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
