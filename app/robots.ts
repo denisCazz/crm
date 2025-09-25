@@ -4,6 +4,6 @@ export default function robots() {
     rules: [
       { userAgent: "*", disallow: ["/login", "/signup"] },
     ],
-    sitemap: "https://crm-3xm8.vercel.app/sitemap.xml",
+    sitemap: "https://bitora-crm.it/sitemap.xml",
   };
 }

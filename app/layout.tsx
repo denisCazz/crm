@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css";
 export const metadata = {
   title: "Bitora CRM",
   description: "CRM minimale e veloce per PMI.",
-  metadataBase: new URL("https://crm-3xm8.vercel.app"),
+  metadataBase: new URL("https://bitora-crm.it"),
 };
 
 
