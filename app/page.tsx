@@ -5,7 +5,11 @@ import { User } from "@supabase/supabase-js";
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
 import { AddressAutocomplete } from "../components/AddressAutocomplete";
+import  ClientDetailModal  from "../components/ClientDetailModal";
+import { TagInput } from "../components/TagInput";
+import { StatisticsModal } from "../components/StatisticsModal";
 import { useSupabaseSafe } from "../lib/supabase";
+import { Client } from "../types";
 
 // Util: costruisce un nome leggibile dal login
 function getDisplayName(user: User | null): string {
@@ -100,23 +104,15 @@ export default function Page() {
 
 /* ----------------------------- Tabella Clienti ----------------------------- */
 
-type Client = {
-  id: string;
-  owner_id: string;
-  first_name: string | null;
-  last_name: string | null;
-  address: string | null;
-  notes: string | null;
-  phone: string | null;
-  email: string | null;
-  created_at: string;
-};
-
 function ClientTable({ user }: { user: User }) {
   const [rows, setRows] = useState<Client[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [qDebounced, setQDebounced] = useState("");
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const supabase = useSupabaseSafe();
   
   useEffect(() => {
@@ -125,14 +121,68 @@ function ClientTable({ user }: { user: User }) {
   }, [query]);
 
   const filtered = useMemo(() => {
+    let result = rows;
+
+    // Filtro per tag
+    if (activeTagFilter) {
+      result = result.filter(r => r.tags?.includes(activeTagFilter));
+    }
+
+    // Filtro per testo
     const q = qDebounced.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.first_name, r.last_name, r.address, r.notes, r.phone, r.email]
-        .filter(Boolean)
-        .some((v) => (v as string).toLowerCase().includes(q))
-    );
-  }, [rows, qDebounced]);
+    if (q) {
+      result = result.filter((r) =>
+        [r.first_name, r.last_name, r.address, r.notes, r.phone, r.email, ...(r.tags || [])]
+          .filter(Boolean)
+          .some((v) => (v as string).toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [rows, qDebounced, activeTagFilter]);
+
+  // Funzione export CSV
+  const exportToCSV = () => {
+    const headers = [
+      'Nome',
+      'Cognome', 
+      'Telefono',
+      'Email',
+      'Indirizzo',
+      'Note',
+      'Latitudine',
+      'Longitudine',
+      'Data Creazione'
+    ];
+
+    const csvData = rows.map(client => [
+      client.first_name || '',
+      client.last_name || '',
+      client.phone || '',
+      client.email || '',
+      client.address || '',
+      client.notes || '',
+      client.lat?.toString() || '',
+      client.lon?.toString() || '',
+      new Date(client.created_at).toLocaleDateString('it-IT')
+    ]);
+
+    const csvContent = [headers, ...csvData]
+      .map(row => row.map(field => `"${field.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `clienti-bitora-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -162,8 +212,63 @@ function ClientTable({ user }: { user: User }) {
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 text-xs sm:text-sm">⌘K</span>
         </div>
-        <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsStatsModalOpen(true)}
+            disabled={rows.length === 0}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-neutral-700 disabled:text-neutral-400 text-white rounded-xl text-sm font-medium transition-colors inline-flex items-center gap-2"
+            title="Mostra statistiche e KPI"
+          >
+            <span>📊</span>
+            Statistiche
+          </button>
+          <button
+            onClick={exportToCSV}
+            disabled={rows.length === 0}
+            className="px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-neutral-700 disabled:text-neutral-400 text-white rounded-xl text-sm font-medium transition-colors inline-flex items-center gap-2"
+            title="Esporta tutti i clienti in CSV"
+          >
+            <span>📊</span>
+            Esporta CSV
+          </button>
+          <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
+        </div>
       </div>
+
+      {/* Filtri rapidi Tags */}
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-sm text-neutral-400">Filtra per:</span>
+          <button
+            onClick={() => setActiveTagFilter(null)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              !activeTagFilter 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+            }`}
+          >
+            Tutti ({rows.length})
+          </button>
+          {['Cliente Caldo', 'Prospect', 'Fornitore', 'Partner', 'Lead'].map(tag => {
+            const count = rows.filter(r => r.tags?.includes(tag)).length;
+            if (count === 0) return null;
+            
+            return (
+              <button
+                key={tag}
+                onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  activeTagFilter === tag
+                    ? 'bg-green-600 text-white' 
+                    : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                }`}
+              >
+                {tag} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stato errore/empty */}
       {err && (
@@ -188,7 +293,6 @@ function ClientTable({ user }: { user: User }) {
                         href={`tel:${c.phone}`}
                         className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
                       >
-                        <span className="text-xs">📞</span>
                         {c.phone}
                       </a>
                     )}
@@ -197,14 +301,25 @@ function ClientTable({ user }: { user: User }) {
                         href={`mailto:${c.email}`}
                         className="flex items-center gap-1.5 text-sm text-green-400 hover:text-green-300 transition-colors"
                       >
-                        <span className="text-xs">✉️</span>
                         {c.email}
                       </a>
                     )}
                     {c.address && (
                       <p className="text-xs text-neutral-400 break-words">
-                        📍 {c.address}
+                        {c.address}
                       </p>
+                    )}
+                    {c.tags && c.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {c.tags.slice(0, 3).map((tag, idx) => (
+                          <span key={idx} className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-lg">
+                            {tag}
+                          </span>
+                        ))}
+                        {c.tags.length > 3 && (
+                          <span className="text-xs text-neutral-400">+{c.tags.length - 3}</span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -235,35 +350,38 @@ function ClientTable({ user }: { user: User }) {
 
       {/* Desktop: tabella */}
       <div className="hidden lg:block overflow-x-auto no-scrollbar rounded-2xl border border-neutral-800">
-        <table className="min-w-full text-sm table-fixed">
+        <table className="min-w-full text-sm">
           <thead className="bg-neutral-900 text-neutral-300">
             <tr>
-              <th className="text-left px-3 py-3 font-medium w-24">Nome</th>
-              <th className="text-left px-3 py-3 font-medium w-24">Cognome</th>
-              <th className="text-left px-3 py-3 font-medium w-32">📞 Telefono</th>
-              <th className="text-left px-3 py-3 font-medium w-40">✉️ Email</th>
-              <th className="text-left px-3 py-3 font-medium">📍 Indirizzo</th>
-              <th className="text-left px-3 py-3 font-medium w-32">Note</th>
-              <th className="text-right px-3 py-3 font-medium w-24">Azioni</th>
+              <th className="text-left px-3 py-3 font-medium">Nome</th>
+              <th className="text-left px-3 py-3 font-medium">Cognome</th>
+              <th className="text-left px-3 py-3 font-medium">📞 Telefono</th>
+              <th className="text-left px-3 py-3 font-medium">✉️ Email</th>
+              <th className="text-right px-3 py-3 font-medium">Azioni</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
+                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Nessun cliente</td>
               </tr>
             ) : (
               filtered.map((c) => (
                 <tr key={c.id} className="border-t border-neutral-800 hover:bg-neutral-900/60">
-                  <td className="px-3 py-3 truncate">{c.first_name ?? "—"}</td>
-                  <td className="px-3 py-3 truncate">{c.last_name ?? "—"}</td>
+                  <td className="px-3 py-3">
+                    <span className="font-medium">{c.first_name ?? "—"}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="font-medium">{c.last_name ?? "—"}</span>
+                  </td>
                   <td className="px-3 py-3">
                     {c.phone ? (
                       <a 
                         href={`tel:${c.phone}`}
-                        className="text-blue-400 hover:text-blue-300 transition-colors text-xs block truncate"
+                        className="text-blue-400 hover:text-blue-300 transition-colors inline-flex items-center gap-1"
                         title={`Chiama ${c.phone}`}
                       >
+                        <span className="text-xs">📞</span>
                         {c.phone}
                       </a>
                     ) : (
@@ -274,36 +392,28 @@ function ClientTable({ user }: { user: User }) {
                     {c.email ? (
                       <a 
                         href={`mailto:${c.email}`}
-                        className="text-green-400 hover:text-green-300 transition-colors text-xs block truncate"
+                        className="text-green-400 hover:text-green-300 transition-colors inline-flex items-center gap-1 max-w-[200px] truncate"
                         title={`Email ${c.email}`}
                       >
-                        {c.email}
+                        <span className="text-xs">✉️</span>
+                        <span className="truncate">{c.email}</span>
                       </a>
                     ) : (
                       <span className="text-neutral-500">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-1">
-                      <span className="truncate max-w-[20ch] text-xs" title={c.address ?? undefined}>{c.address ?? "—"}</span>
-                      {c.address ? (
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.address)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs text-neutral-400 hover:text-white shrink-0"
-                          title="Apri in Maps"
-                        >
-                          🗺️
-                        </a>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="line-clamp-2 max-w-[20ch] text-neutral-300 break-words text-xs" title={c.notes ?? undefined}>{c.notes ?? ""}</span>
-                  </td>
                   <td className="px-3 py-3 text-right">
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex items-center gap-1">
+                      <button
+                        onClick={() => {
+                          setSelectedClient(c);
+                          setIsDetailModalOpen(true);
+                        }}
+                        className="px-2 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-colors"
+                        title="Vedi dettagli"
+                      >
+                        Dettagli
+                      </button>
                       <EditClientButton client={c} onUpdated={(nuovo) => setRows((rows) => rows.map((r) => (r.id === nuovo.id ? nuovo : r)))} />
                       <DeleteClientButton clientId={c.id} onDeleted={() => setRows((rows) => rows.filter((r) => r.id !== c.id))} />
                     </div>
@@ -338,18 +448,30 @@ function ClientTable({ user }: { user: User }) {
                     <div>
                       <div className="font-medium">{(c.first_name ?? "").trim()} {(c.last_name ?? "").trim() || ""}</div>
                       {c.notes && <div className="text-xs text-neutral-400 truncate mt-1">{c.notes}</div>}
+                      {c.tags && c.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {c.tags.slice(0, 2).map((tag, idx) => (
+                            <span key={idx} className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                          {c.tags.length > 2 && (
+                            <span className="text-xs text-neutral-400">+{c.tags.length - 2}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="space-y-1">
                       {c.phone && (
                         <a href={`tel:${c.phone}`} className="block text-blue-400 hover:text-blue-300 text-xs">
-                          📞 {c.phone}
+                          {c.phone}
                         </a>
                       )}
                       {c.email && (
                         <a href={`mailto:${c.email}`} className="block text-green-400 hover:text-green-300 text-xs">
-                          ✉️ {c.email}
+                          {c.email}
                         </a>
                       )}
                     </div>
@@ -384,6 +506,30 @@ function ClientTable({ user }: { user: User }) {
           </tbody>
         </table>
       </div>
+
+      {/* Modal Dettagli Cliente */}
+      <ClientDetailModal
+        client={selectedClient}
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedClient(null);
+        }}
+        onEdit={() => {
+          // Trova e clicca il bottone modifica per questo cliente
+          const editButton = document.querySelector(`[data-edit-client="${selectedClient?.id}"]`) as HTMLButtonElement;
+          if (editButton) {
+            editButton.click();
+          }
+        }}
+      />
+
+      {/* Modal Statistiche */}
+      <StatisticsModal
+        clients={rows}
+        isOpen={isStatsModalOpen}
+        onClose={() => setIsStatsModalOpen(false)}
+      />
     </section>
   );
 }
@@ -391,7 +537,7 @@ function ClientTable({ user }: { user: User }) {
 function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "" });
+  const [form, setForm] = useState({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "", tags: [] as string[] });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
   const supabase = useSupabaseSafe();
@@ -436,7 +582,7 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
       onCreated(data as Client);
       push("success", "Cliente creato con successo!");
       setOpen(false);
-      setForm({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "" });
+      setForm({ first_name: "", last_name: "", address: "", notes: "", phone: "", email: "", tags: [] });
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
@@ -498,7 +644,15 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Tags</label>
+                <TagInput
+                  tags={form.tags}
+                  onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                  placeholder="Aggiungi tag per categorizzare il cliente..."
+                />
               </div>
 
               {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
@@ -527,6 +681,7 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
     notes: client.notes ?? "",
     phone: client.phone ?? "",
     email: client.email ?? "",
+    tags: client.tags ?? [],
   });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
@@ -574,7 +729,13 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs">Modifica</button>
+      <button 
+        data-edit-client={client.id}
+        onClick={() => setOpen(true)} 
+        className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-xs"
+      >
+        Modifica
+      </button>
       {open && (
         <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={() => setOpen(false)}>
           <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-6" onClick={(e) => e.stopPropagation()}>
@@ -623,7 +784,15 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
               </div>
               <div>
                 <label className="block text-sm text-neutral-300 mb-1">Note</label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={4} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+              </div>
+              <div>
+                <label className="block text-sm text-neutral-300 mb-1">Tags</label>
+                <TagInput
+                  tags={form.tags}
+                  onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                  placeholder="Aggiungi tag per categorizzare il cliente..."
+                />
               </div>
               {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
               <div className="flex items-center justify-end gap-3 pt-2">
