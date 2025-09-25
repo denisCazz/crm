@@ -34,11 +34,11 @@ function MainApp() {
   useEffect(() => {
     if (!supabase) return;
     
-    supabase.auth.getSession().then(({ data }: { data: any }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then((response: { data: { session: { user: User } | null } | null }) => {
+      setUser(response.data?.session?.user ?? null);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event: unknown, newSession: unknown) => {
-      setUser((newSession as any)?.user ?? null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event: unknown, newSession: { user: User } | null) => {
+      setUser(newSession?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -73,7 +73,9 @@ function MainApp() {
             <ClientTable user={user} />
           </div>
 
-          <div className="py-6 text-center text-xs sm:text-sm text-neutral-500">Bitora · Minimal CRM</div>
+          <div className="py-6 text-center text-xs sm:text-sm text-neutral-500">
+            Powered by <span className="font-semibold">Bitora</span> · Un prodotto di <a href="https://bitora.it" target="_blank" rel="noopener noreferrer" className="underline hover:text-neutral-400">Denis Cazzulo</a> (bitora.it)
+          </div>
         </div>
       )}
     </>

@@ -1,5 +1,5 @@
 "use client";
-import React, { createContext, useContext, useId, useMemo, useState } from "react";
+import React, { createContext, useContext, useId, useMemo, useState, useCallback } from "react";
 
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: string; kind: ToastKind; message: string };
@@ -16,12 +16,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const remove = (id: string) => setToasts((t) => t.filter((x) => x.id !== id));
 
-  const push = (kind: ToastKind, message: string, ms = 3000) => {
+  const push = useCallback((kind: ToastKind, message: string, ms = 3000) => {
     const id = `${idPrefix}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts((t) => [...t, { id, kind, message }]);
     // auto-dismiss
     setTimeout(() => remove(id), ms);
-  };
+  }, [idPrefix]);
 
   const value = useMemo(() => ({ push }), [push]);
 

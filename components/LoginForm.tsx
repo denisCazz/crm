@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useToast } from "./Toaster";
+import { AnimatedBackground } from "./AnimatedBackground";
 
 // Supabase client (browser)
 const supabase = createClient(
@@ -46,8 +47,9 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 relative overflow-hidden">
+      <AnimatedBackground />
+      <div className="w-full max-w-md relative z-20">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent mb-2">
@@ -169,7 +171,7 @@ export default function LoginForm() {
         {/* Footer */}
         <div className="text-center mt-8">
           <p className="text-xs text-neutral-500">
-            Powered by <span className="font-semibold">Bitora</span> • Minimal CRM Solution
+            Powered by <span className="font-semibold">Bitora</span> · Un prodotto di <a href="https://bitora.it" target="_blank" rel="noopener noreferrer" className="underline hover:text-neutral-400">Denis Cazzulo</a> (bitora.it)
           </p>
         </div>
       </div>
