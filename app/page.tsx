@@ -1,32 +1,40 @@
-'use client';
+"use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { createClient, Session, User } from "@supabase/supabase-js";
 import Link from "next/link";
+import { createClient, User } from "@supabase/supabase-js";
 
-const supabaseUrl = (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) || (globalThis as any).NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) || (globalThis as any).NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Supabase client (browser)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-const supabase = createClient(supabaseUrl!, supabaseAnonKey!);
+// Util: costruisce un nome leggibile dal login
+function getDisplayName(user: User | null): string {
+  if (!user?.email) return "Cliente";
+  const local = user.email.split("@")[0];
+  if (!local) return "Cliente";
+  // Capitalizza la prima lettera del local-part
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
 
-export default function LoginAndClients() {
-  const [session, setSession] = useState<Session | null>(null);
+export default function Page() {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ email: "", password: "" });
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [error, setError] = useState<string | null>(null);
 
+  // Aggiorna il titolo della pagina in base all'utente
   useEffect(() => {
-    // Carica sessione esistente
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
+    const title = `Bitora CRM x ${getDisplayName(user)}`;
+    document.title = title;
+  }, [user]);
 
-    // Ascolta cambi sessione
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
       setUser(newSession?.user ?? null);
     });
     return () => sub.subscription.unsubscribe();
@@ -49,31 +57,27 @@ export default function LoginAndClients() {
         });
         if (error) throw error;
       }
-    } catch (err: any) {
-      setError(err.message ?? String(err));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-  }
+  async function handleLogout() { await supabase.auth.signOut(); }
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
       <div className="max-w-5xl mx-auto p-6">
         <header className="flex items-center justify-between gap-4 pb-6 border-b border-neutral-800">
-          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Mini gestionale – Clienti</h1>
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight">
+            {`Bitora CRM x ${getDisplayName(user)}`}
+          </h1>
           {user ? (
             <div className="flex items-center gap-3">
               <span className="text-sm text-neutral-400 hidden sm:block">{user.email}</span>
-              <button onClick={handleLogout} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">
-                Esci
-              </button>
+              <Link href="/mappa" className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">Mappa</Link>
+              <button onClick={handleLogout} className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">Esci</button>
             </div>
           ) : null}
-          <Link href="/mappa" className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-sm">
-            Mappa Clienti
-          </Link>
         </header>
 
         {!user ? (
@@ -102,9 +106,7 @@ export default function LoginAndClients() {
               />
 
               {error && (
-                <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">
-                  {error}
-                </div>
+                <div className="mb-4 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{error}</div>
               )}
 
               <div className="flex items-center justify-between gap-3">
@@ -126,15 +128,12 @@ export default function LoginAndClients() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="py-8 text-center text-sm text-neutral-500">Made with Supabase · Dark UI</div>
+      <div className="py-8 text-center text-sm text-neutral-500">Bitora · Minimal CRM</div>
     </div>
   );
 }
 
-// -----------------------------
-// Tabella Clienti
-// -----------------------------
+/* ----------------------------- Tabella Clienti ----------------------------- */
 
 type Client = {
   id: string;
@@ -148,7 +147,6 @@ type Client = {
 
 function ClientTable({ user }: { user: User }) {
   const [rows, setRows] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
@@ -163,24 +161,17 @@ function ClientTable({ user }: { user: User }) {
   }, [rows, query]);
 
   useEffect(() => {
-    let mounted = true;
-    async function load() {
-      setLoading(true);
+    const load = async () => {
       setErr(null);
       const { data, error } = await supabase
         .from("clients")
         .select("id, owner_id, first_name, last_name, address, notes, created_at")
         .order("created_at", { ascending: false });
-      if (!mounted) return;
-      if (error) {
-        setErr(error.message);
-      } else {
-        setRows(data as Client[]);
-      }
-      setLoading(false);
-    }
+      if (error) setErr(error.message);
+      else setRows((data as Client[]) ?? []);
+    };
     load();
-  }, [user?.id]);
+  }, [user.id]);
 
   return (
     <section className="mt-8">
@@ -209,11 +200,7 @@ function ClientTable({ user }: { user: User }) {
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-neutral-400">Caricamento…</td>
-              </tr>
-            ) : err ? (
+            {err ? (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-red-400">{err}</td>
               </tr>
@@ -286,19 +273,22 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
         .select("id, owner_id, first_name, last_name, address, notes, created_at")
         .single();
 
-        if (!error && data) {
-          await fetch("/api/geocode", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
-          });
-        }
       if (error) throw error;
+
+      // Geocode (server route) se c'è indirizzo
+      if (data?.address) {
+        await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
+        });
+      }
+
       onCreated(data as Client);
       setOpen(false);
       setForm({ first_name: "", last_name: "", address: "", notes: "" });
-    } catch (e: any) {
-      setErr(e.message ?? String(e));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -377,21 +367,21 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
         .eq("id", client.id)
         .select("id, owner_id, first_name, last_name, address, notes, created_at")
         .single();
-        if (!error && data) {
-        // geocodifica solo se l'indirizzo è cambiato (o sempre, se vuoi semplificare)
-        if (data.address !== client.address) {
-          await fetch("/api/geocode", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
-          });
-        }
-      }
       if (error) throw error;
+
+      // Geocode se l'indirizzo è cambiato
+      if (data && data.address !== client.address) {
+        await fetch("/api/geocode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: data.id, address: data.address, owner_id: data.owner_id }),
+        });
+      }
+
       onUpdated(data as Client);
       setOpen(false);
-    } catch (e: any) {
-      setErr(e.message ?? String(e));
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -437,34 +427,3 @@ function EditClientButton({ client, onUpdated }: { client: Client; onUpdated: (c
     </>
   );
 }
-
-/*
--- SQL minimo per la tabella `clients` con RLS owner-based (da eseguire su Supabase)
-
-create table if not exists public.clients (
-  id         uuid primary key default gen_random_uuid(),
-  owner_id   uuid not null references auth.users(id) on delete cascade,
-  first_name text,
-  last_name  text,
-  address    text,
-  notes      text,
-  created_at timestamptz not null default now()
-);
-
-alter table public.clients enable row level security;
-
-create index if not exists idx_clients_owner on public.clients(owner_id);
-
--- Policy: ogni utente vede/gestisce solo i propri clienti
-create policy "owner can select" on public.clients
-  for select using (owner_id = auth.uid());
-
-create policy "owner can insert" on public.clients
-  for insert with check (owner_id = auth.uid());
-
-create policy "owner can update" on public.clients
-  for update using (owner_id = auth.uid());
-
-create policy "owner can delete" on public.clients
-  for delete using (owner_id = auth.uid());
-*/
