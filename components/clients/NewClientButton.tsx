@@ -63,6 +63,7 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
         notes: form.notes || null,
         phone: form.phone || null,
         email: form.email || null,
+        tags: form.tags.length > 0 ? form.tags : null,
       };
 
       const { data, error } = await supabase

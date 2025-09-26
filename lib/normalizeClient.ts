@@ -8,10 +8,16 @@ const cleanTag = (tag: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const parseDelimitedTags = (value: string): string[] => {
+const parseDelimitedTags = (rawValue: string): string[] => {
+  let value = rawValue.trim();
+
+  if ((value.startsWith('[') && value.endsWith(']')) || (value.startsWith('(') && value.endsWith(')'))) {
+    value = value.slice(1, -1);
+  }
+
   return value
     .split(/[|,;\n]/)
-    .map((part) => part.trim())
+    .map((part) => part.replace(/^"|"$/g, '').trim())
     .filter((part) => part.length > 0);
 };
 
@@ -34,9 +40,24 @@ export const normalizeTags = (value: UnknownTags): string[] | null => {
           .map(cleanTag)
           .filter((tag): tag is string => tag !== null);
         if (cleaned.length > 0) return cleaned;
+        return null;
       }
     } catch {
-      // Ignore JSON parse errors and fall back to delimiter-based split
+      // Ignore JSON parse errors and continue with other strategies
+    }
+
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      const inside = trimmed.slice(1, -1);
+      if (!inside) return null;
+
+      const parts = inside
+        .split(',')
+        .map((part) => part.replace(/^"|"$/g, '').replace(/\\"/g, '"').trim())
+        .filter((part) => part.length > 0)
+        .map(cleanTag)
+        .filter((tag): tag is string => tag !== null);
+
+      return parts.length > 0 ? parts : null;
     }
 
     const splitted = parseDelimitedTags(trimmed);

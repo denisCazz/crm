@@ -62,7 +62,7 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
           notes: form.notes || null,
           phone: form.phone || null,
           email: form.email || null,
-          tags: form.tags,
+          tags: form.tags.length > 0 ? form.tags : null,
         })
         .eq('id', client.id)
         .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, lat, lon, created_at')
