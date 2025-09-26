@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 import { ToastProvider, useToast } from "../components/Toaster";
@@ -26,8 +26,10 @@ function MainApp() {
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const { push } = useToast();
   const supabase = useSupabaseSafe();
+  const handleRowsChange = useCallback((next: Client[]) => setRows(next), []);
+  const openStatsModal = useCallback(() => setIsStatsModalOpen(true), []);
+  const closeStatsModal = useCallback(() => setIsStatsModalOpen(false), []);
 
-  // Aggiorna il titolo della pagina in base all'utente
   useEffect(() => {
     const title = `Bitora CRM x ${getDisplayName(user)}`;
     document.title = title;
@@ -38,65 +40,71 @@ function MainApp() {
       setLoading(false);
       return;
     }
-    
+
     supabase.auth.getSession().then((response: { data: { session: { user: User } | null } | null }) => {
       setUser(response.data?.session?.user ?? null);
       setLoading(false);
     });
+
     const { data: sub } = supabase.auth.onAuthStateChange((_event: unknown, newSession: { user: User } | null) => {
       setUser(newSession?.user ?? null);
     });
+
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
-  async function handleLogout() { 
+  async function handleLogout() {
     if (!supabase) return;
-    
+
     await supabase.auth.signOut();
     push("success", "Logout effettuato con successo!");
   }
 
-  // Funzione export CSV
   const exportToCSV = () => {
+    if (rows.length === 0) return;
+
     const headers = [
-      'Nome',
-      'Cognome', 
-      'Telefono',
-      'Email',
-      'Indirizzo',
-      'Note',
-      'Latitudine',
-      'Longitudine',
-      'Data Creazione'
+      "Nome",
+      "Cognome",
+      "Telefono",
+      "Email",
+      "Indirizzo",
+      "Note",
+      "Tags",
+      "Latitudine",
+      "Longitudine",
+      "Data Creazione",
     ];
 
-    const csvData = rows.map(client => [
-      client.first_name || '',
-      client.last_name || '',
-      client.phone || '',
-      client.email || '',
-      client.address || '',
-      client.notes || '',
-      client.lat?.toString() || '',
-      client.lon?.toString() || '',
-      new Date(client.created_at).toLocaleDateString('it-IT')
+    const csvData = rows.map((client) => [
+      client.first_name ?? "",
+      client.last_name ?? "",
+      client.phone ?? "",
+      client.email ?? "",
+      client.address ?? "",
+      client.notes ?? "",
+      (client.tags ?? []).join(" | "),
+      client.lat?.toString() ?? "",
+      client.lon?.toString() ?? "",
+      new Date(client.created_at).toLocaleDateString("it-IT"),
     ]);
 
     const csvContent = [headers, ...csvData]
-      .map(row => row.map(field => `"${field.replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+      .map((row) => row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
 
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
+    const blob = new Blob(["\ufeff" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `clienti-bitora-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
+
+    link.setAttribute("href", url);
+    link.setAttribute("download", `clienti-bitora-${new Date().toISOString().split("T")[0]}.csv`);
+    link.style.visibility = "hidden";
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (loading) {
@@ -113,19 +121,36 @@ function MainApp() {
         <LoginForm />
       ) : (
         <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-            <header className="bg-neutral-900 border border-neutral-800 rounded-lg mb-6 shadow-lg">
-              <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4">
-                <h1 className="text-xl sm:text-2xl font-semibold text-neutral-100 tracking-tight">
-                  Bitora CRM
-                </h1>
-                <div className="flex items-center gap-3">
-                  <Link href="/mappa" className="px-3 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-sm font-medium text-neutral-200 transition-colors">Mappa</Link>
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
+            <header className="bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-neutral-950 border border-neutral-800/60 rounded-2xl shadow-xl">
+              <div className="px-4 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-blue-400/80">
+                    <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                    Dashboard clienti
+                  </span>
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-semibold text-neutral-100 tracking-tight">Bitora CRM</h1>
+                    <p className="text-sm sm:text-base text-neutral-400 mt-1 max-w-xl">
+                      Gestisci i tuoi clienti, monitora le interazioni e mantieni la pipeline sempre aggiornata con un colpo d'occhio.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+                  <Link
+                    href="/mappa"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-3 text-sm font-medium text-neutral-200 hover:bg-neutral-800/90 transition"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A2 2 0 013 15.447V4.553a2 2 0 011.553-1.947L9 1m0 19l6-3m-6 3V1m6 16l5.447 2.724A2 2 0 0021 18.553V7.447a2 2 0 00-1.553-1.947L15 3m0 14V3" />
+                    </svg>
+                    Mappa clienti
+                  </Link>
                   <UserMenuDropdown 
                     user={user}
                     onLogout={handleLogout}
                     onExportCSV={exportToCSV}
-                    onStatsOpen={() => setIsStatsModalOpen(true)}
+                    onStatsOpen={openStatsModal}
                     canExport={rows.length > 0}
                     canShowStats={rows.length > 0}
                   />
@@ -133,7 +158,13 @@ function MainApp() {
               </div>
             </header>
 
-            <ClientTable user={user} onLogout={handleLogout} />
+            <ClientTable
+              user={user}
+              onLogout={handleLogout}
+              onRowsChange={handleRowsChange}
+              isStatsModalOpen={isStatsModalOpen}
+              onStatsClose={closeStatsModal}
+            />
           </div>
 
           <div className="py-8 text-center text-sm text-neutral-500 bg-neutral-950 border-t border-neutral-800">
@@ -155,7 +186,19 @@ export default function Page() {
 
 /* ----------------------------- Tabella Clienti ----------------------------- */
 
-function ClientTable({ user, onLogout }: { user: User; onLogout: () => Promise<void> }) {
+function ClientTable({
+  user,
+  onLogout,
+  onRowsChange,
+  isStatsModalOpen,
+  onStatsClose,
+}: {
+  user: User;
+  onLogout: () => Promise<void>;
+  onRowsChange?: (rows: Client[]) => void;
+  isStatsModalOpen: boolean;
+  onStatsClose: () => void;
+}) {
   const [rows, setRows] = useState<Client[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -164,7 +207,6 @@ function ClientTable({ user, onLogout }: { user: User; onLogout: () => Promise<v
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [flippedCards, setFlippedCards] = useState<Record<string, 'details' | 'edit' | null>>({});
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const supabase = useSupabaseSafe();
@@ -177,49 +219,6 @@ function ClientTable({ user, onLogout }: { user: User; onLogout: () => Promise<v
   const closeEditModal = () => {
     setIsEditModalOpen(false);
     setEditingClient(null);
-  };
-  
-  // Funzione export CSV
-  const exportToCSV = () => {
-    const headers = [
-      'Nome',
-      'Cognome', 
-      'Telefono',
-      'Email',
-      'Indirizzo',
-      'Note',
-      'Latitudine',
-      'Longitudine',
-      'Data Creazione'
-    ];
-
-    const csvData = rows.map(client => [
-      client.first_name || '',
-      client.last_name || '',
-      client.phone || '',
-      client.email || '',
-      client.address || '',
-      client.notes || '',
-      client.lat?.toString() || '',
-      client.lon?.toString() || '',
-      new Date(client.created_at).toLocaleDateString('it-IT')
-    ]);
-
-    const csvContent = [headers, ...csvData]
-      .map(row => row.map(field => `"${field.replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `clienti-bitora-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
   
   useEffect(() => {
@@ -249,72 +248,103 @@ function ClientTable({ user, onLogout }: { user: User; onLogout: () => Promise<v
   }, [rows, qDebounced, activeTagFilter]);
 
   useEffect(() => {
+    if (!supabase) return;
+    let cancelled = false;
+
     const load = async () => {
-      if (!supabase) return;
       setErr(null);
       const { data, error } = await supabase
         .from("clients")
-        .select("id, owner_id, first_name, last_name, address, notes, phone, email, created_at")
+        .select("id, owner_id, first_name, last_name, address, notes, phone, email, lat, lon, created_at")
         .eq("owner_id", user.id)
         .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+
       if (error) setErr(error.message);
       else setRows((data as Client[]) ?? []);
     };
+
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user.id, supabase]);
 
-  return (
-    <section className="mt-4 sm:mt-8">
-      {/* Barra azioni / ricerca */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <div className="relative flex-1 max-w-full sm:max-w-md">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cerca per nome, indirizzo o note…"
-            className="w-full bg-neutral-900 border border-neutral-800 rounded-lg pl-4 pr-10 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600"
-          />
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 text-xs sm:text-sm">⌘K</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
-        </div>
-      </div>
+  useEffect(() => {
+    onRowsChange?.(rows);
+  }, [rows, onRowsChange]);
 
-      {/* Filtri rapidi Tags */}
-      {rows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          <span className="text-sm text-neutral-400">Filtra per:</span>
-          <button
-            onClick={() => setActiveTagFilter(null)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              !activeTagFilter 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-            }`}
-          >
-            Tutti ({rows.length})
-          </button>
-          {['Cliente Caldo', 'Prospect', 'Fornitore', 'Partner', 'Lead'].map(tag => {
-            const count = rows.filter(r => r.tags?.includes(tag)).length;
-            if (count === 0) return null;
-            
-            return (
-              <button
-                key={tag}
-                onClick={() => setActiveTagFilter(activeTagFilter === tag ? null : tag)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  activeTagFilter === tag
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-                }`}
-              >
-                {tag} ({count})
-              </button>
-            );
-          })}
+  return (
+    <section className="mt-4 sm:mt-8 space-y-6">
+      <div className="bg-neutral-900/80 backdrop-blur-sm border border-neutral-800/70 rounded-2xl p-4 sm:p-5 shadow-lg">
+        {/* Barra azioni / ricerca */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-neutral-500">
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35m1.35-4.65a6 6 0 11-12 0 6 6 0 0112 0z" />
+              </svg>
+            </span>
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Cerca per nome, indirizzo, tag o note…"
+              className="w-full rounded-xl border border-neutral-800 bg-neutral-950/80 pl-11 pr-12 py-3 text-sm sm:text-base text-neutral-200 outline-none focus:ring-2 focus:ring-blue-600/60 focus:border-blue-500/40 transition"
+            />
+            <span className="absolute right-3 top-1/2 hidden -translate-y-1/2 text-xs font-medium text-neutral-500 sm:inline">⌘K</span>
+          </div>
+          <div className="flex items-stretch sm:items-center gap-2">
+            <NewClientButton onCreated={(c) => setRows((r) => [c, ...r])} />
+          </div>
         </div>
-      )}
+
+        {/* Filtri rapidi Tags */}
+        {rows.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-neutral-400">
+                Segmenti rapidi
+              </span>
+              <div className="h-px flex-1 bg-neutral-800/70"></div>
+            </div>
+            <div className="-mx-1 overflow-x-auto">
+              <div className="flex items-center gap-2 px-1 pb-1">
+                <button
+                  onClick={() => setActiveTagFilter(null)}
+                  className={`px-3.5 py-1.75 rounded-full text-xs sm:text-sm font-medium transition-colors ${
+                    !activeTagFilter
+                      ? 'bg-blue-600/90 text-white shadow-lg shadow-blue-600/20'
+                      : 'bg-neutral-900 text-neutral-300 border border-neutral-800 hover:bg-neutral-800'
+                  }`}
+                >
+                  Tutti ({rows.length})
+                </button>
+                {['Cliente Caldo', 'Prospect', 'Fornitore', 'Partner', 'Lead'].map(tag => {
+                  const count = rows.filter(r => r.tags?.includes(tag)).length;
+                  if (count === 0) return null;
+
+                  const isActive = activeTagFilter === tag;
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => setActiveTagFilter(isActive ? null : tag)}
+                      className={`px-3.5 py-1.75 rounded-full text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+                        isActive
+                          ? 'bg-emerald-500/90 text-emerald-50 shadow-lg shadow-emerald-500/20'
+                          : 'bg-neutral-900 text-neutral-300 border border-neutral-800 hover:bg-neutral-800'
+                      }`}
+                    >
+                      {tag} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Stato errore/empty */}
       {err && (
@@ -732,7 +762,7 @@ function ClientTable({ user, onLogout }: { user: User; onLogout: () => Promise<v
       <StatisticsModal
         clients={rows}
         isOpen={isStatsModalOpen}
-        onClose={() => setIsStatsModalOpen(false)}
+        onClose={onStatsClose}
       />
     </section>
   );
@@ -878,78 +908,167 @@ function NewClientButton({ onCreated }: { onCreated: (c: Client) => void }) {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium transition-colors">
-        + Nuovo cliente
+      <button
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 px-4 sm:px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:shadow-blue-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-400 focus-visible:ring-offset-neutral-950"
+      >
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m7-7H5" />
+        </svg>
+        Nuovo cliente
       </button>
 
       {open && (
-        <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-5 sm:p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-medium mb-4">Nuovo cliente</h3>
-            <form onSubmit={createClient} className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-neutral-300 mb-1">Nome</label>
-                  <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 sm:p-6"
+          onClick={() => !saving && setOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-neutral-800/70 bg-neutral-950/95 shadow-[0_25px_70px_-30px_rgba(0,0,0,0.8)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-500" />
+            <button
+              type="button"
+              onClick={() => !saving && setOpen(false)}
+              className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-700/70 bg-neutral-900/70 text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200"
+              aria-label="Chiudi modale nuovo cliente"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            <div className="flex flex-col gap-6 px-5 pb-6 pt-8 sm:px-8 sm:pb-8 sm:pt-10">
+              <div className="space-y-3">
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+                  Nuovo cliente
+                </span>
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-semibold text-neutral-50">Registra un nuovo contatto</h3>
+                  <p className="text-sm text-neutral-400">
+                    Inserisci le informazioni principali per aggiungere rapidamente il cliente alla tua pipeline.
+                  </p>
                 </div>
-                <div>
-                  <label className="block text-sm text-neutral-300 mb-1">Cognome</label>
-                  <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-neutral-300 mb-1">Indirizzo</label>
-                <AddressAutocomplete
-                  value={form.address}
-                  onChange={(value) => setForm((f) => ({ ...f, address: value }))}
-                  placeholder="Inserisci l'indirizzo..."
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600"
-                />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-neutral-300 mb-1">Telefono</label>
-                  <input 
-                    type="tel" 
-                    value={form.phone} 
-                    onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} 
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
-                    placeholder="+39 123 456 7890"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-neutral-300 mb-1">Email</label>
-                  <input 
-                    type="email" 
-                    value={form.email} 
-                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} 
-                    className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" 
-                    placeholder="cliente@email.com"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-neutral-300 mb-1">Note</label>
-                <textarea value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} rows={3} className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2.5 outline-none focus:ring-2 focus:ring-neutral-600" />
-              </div>
-              <div>
-                <label className="block text-sm text-neutral-300 mb-1">Tags</label>
-                <TagInput
-                  tags={form.tags}
-                  onChange={(tags) => setForm((f) => ({ ...f, tags }))}
-                  placeholder="Aggiungi tag per categorizzare il cliente..."
-                />
               </div>
 
-              {err && <div className="text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl px-3 py-2">{err}</div>}
+              <form onSubmit={createClient} className="space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Nome</span>
+                    <input
+                      value={form.first_name}
+                      onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Cognome</span>
+                    <input
+                      value={form.last_name}
+                      onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                  </label>
+                </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-3 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700">Annulla</button>
-                <button type="submit" disabled={saving} className="px-4 py-2.5 rounded-xl bg-white/90 text-black hover:bg-white font-medium">
-                  {saving ? "Salvataggio…" : "Salva"}
-                </button>
-              </div>
-            </form>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Indirizzo</span>
+                    <span className="text-[11px] text-neutral-500">Suggerimenti automatici con OpenStreetMap</span>
+                  </div>
+                  <AddressAutocomplete
+                    value={form.address}
+                    onChange={(value) => setForm((f) => ({ ...f, address: value }))}
+                    placeholder="Via, numero civico, città…"
+                    className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Telefono</span>
+                    <input
+                      type="tel"
+                      value={form.phone}
+                      onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      placeholder="+39 123 456 7890"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Email</span>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      placeholder="cliente@email.com"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Note</span>
+                  <textarea
+                    value={form.notes}
+                    onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                    rows={3}
+                    className="w-full rounded-2xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-3 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    placeholder="Dettagli utili, prossimi step, referenti..."
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Tag</span>
+                  <TagInput
+                    tags={form.tags}
+                    onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                    placeholder="Aggiungi tag per categorizzare il cliente…"
+                    className="mt-1"
+                  />
+                </div>
+
+                {err && (
+                  <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+                    {err}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 border-t border-neutral-800/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-neutral-500">I dati potranno essere aggiornati in qualsiasi momento.</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setOpen(false)}
+                      disabled={saving}
+                      className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Annulla
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:shadow-blue-500/40 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {saving ? (
+                        <>
+                          <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
+                          Salvataggio…
+                        </>
+                      ) : (
+                        <>
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m7-7H5" />
+                          </svg>
+                          Salva cliente
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
