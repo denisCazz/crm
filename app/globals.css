@@ -165,4 +165,17 @@ body {
 .flip-card-back {
   transform: rotateY(180deg);
   z-index: 1;
+  touch-action: pan-y;
+}
+
+.flip-card:not(.flipped) .flip-card-back {
+  pointer-events: none;
+}
+
+.flip-card.flipped .flip-card-front {
+  pointer-events: none;
+}
+
+.flip-card.flipped .flip-card-back {
+  pointer-events: auto;
 }

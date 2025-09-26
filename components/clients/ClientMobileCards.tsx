@@ -36,6 +36,96 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
         const cardStyle = { '--flip-card-height': '420px' } as React.CSSProperties;
         const flipState = flippedCards[client.id] ?? null;
 
+        const frontDisplays = {
+          phone: Boolean(client.phone),
+          email: !client.phone && Boolean(client.email),
+          address: Boolean(client.address),
+          notes: Boolean(client.notes),
+          tags: tags.length > 0,
+        };
+
+        const createdAtDate = client.created_at ? new Date(client.created_at) : null;
+        const formattedCreatedAt = createdAtDate && !Number.isNaN(createdAtDate.valueOf())
+          ? createdAtDate.toLocaleString('it-IT', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
+          : null;
+
+        const detailsBlocks: React.ReactNode[] = [];
+
+        if (client.email && !frontDisplays.email) {
+          detailsBlocks.push(
+            <InfoBlock key="email" label="Email" value={client.email} href={`mailto:${client.email}`} />
+          );
+        }
+
+        if (client.phone && !frontDisplays.phone) {
+          detailsBlocks.push(
+            <InfoBlock key="phone" label="Telefono" value={client.phone} href={`tel:${client.phone}`} hrefLabel="Chiama" />
+          );
+        }
+
+        if (!frontDisplays.address && client.address) {
+          detailsBlocks.push(
+            <InfoBlock
+              key="address"
+              label="Indirizzo"
+              value={client.address}
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.address)}`}
+              hrefLabel="Apri in Maps"
+            />
+          );
+        }
+
+        if (!frontDisplays.notes && client.notes) {
+          detailsBlocks.push(
+            <InfoBlock key="notes" label="Note" value={client.notes} multiline />
+          );
+        }
+
+        if (!frontDisplays.tags && tags.length > 0) {
+          detailsBlocks.push(
+            <div key="tags" className="rounded-2xl border border-neutral-800/70 bg-neutral-900/70 p-3">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">Tags</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {tags.map((tag, idx) => (
+                  <span key={idx} className="inline-flex items-center rounded-full bg-neutral-800 px-3 py-1 text-xs font-medium text-neutral-200">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        if (client.lat !== null && client.lon !== null) {
+          const coordinateLabel = `${client.lat.toFixed(5)}, ${client.lon.toFixed(5)}`;
+          detailsBlocks.push(
+            <InfoBlock
+              key="coordinates"
+              label="Coordinate"
+              value={coordinateLabel}
+              href={`https://www.google.com/maps/search/?api=1&query=${client.lat},${client.lon}`}
+              hrefLabel="Apri mappa"
+            />
+          );
+        }
+
+        if (formattedCreatedAt) {
+          detailsBlocks.push(
+            <InfoBlock key="created_at" label="Creato il" value={formattedCreatedAt} />
+          );
+        }
+
+        if (detailsBlocks.length === 0) {
+          detailsBlocks.push(
+            <div key="empty" className="rounded-2xl border border-neutral-800/70 bg-neutral-900/70 p-4 text-sm text-neutral-300">
+              Nessuna informazione aggiuntiva disponibile su questa scheda.
+            </div>
+          );
+        }
+
         return (
           <article
             key={client.id}
@@ -176,37 +266,7 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
                     className="mt-4 flex-1 overflow-y-auto no-scrollbar space-y-3 pr-1"
                     style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
                   >
-                    <InfoBlock label="Nome completo" value={fullName} />
-                    {client.phone && (
-                      <InfoBlock label="Telefono" value={client.phone} href={`tel:${client.phone}`} hrefLabel="Chiama" />
-                    )}
-                    {client.email && (
-                      <InfoBlock label="Email" value={client.email} href={`mailto:${client.email}`} />
-                    )}
-                    {client.address && (
-                      <InfoBlock
-                        label="Indirizzo"
-                        value={client.address}
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(client.address)}`}
-                        hrefLabel="Apri in Maps"
-                      />
-                    )}
-                    {client.notes && <InfoBlock label="Note" value={client.notes} multiline />}
-                    {tags.length > 0 && (
-                      <div className="rounded-2xl border border-neutral-800/70 bg-neutral-900/70 p-3">
-                        <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">Tags</span>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center rounded-full bg-neutral-800 px-3 py-1 text-xs font-medium text-neutral-200"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    {detailsBlocks}
                   </div>
                 ) : (
                   <div className="mt-6 flex flex-1 flex-col items-center justify-center gap-4 text-center">
