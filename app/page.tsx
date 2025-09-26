@@ -11,6 +11,7 @@ import { useSupabaseSafe } from "../lib/supabase";
 import { ClientDashboard } from "../components/clients/ClientDashboard";
 import { NewClientButton } from "../components/clients/NewClientButton";
 import { UserMenuDropdown } from "../components/clients/UserMenuDropdown";
+import { normalizeClient } from "../lib/normalizeClient";
 
 function getDisplayName(user: User | null): string {
   if (!user?.email) return "Cliente";
@@ -29,14 +30,15 @@ function MainApp() {
   const supabase = useSupabaseSafe();
 
   const handleRowsChange = useCallback((next: Client[]) => {
-    setRows(next);
+    setRows(next.map((client) => normalizeClient(client)));
   }, []);
 
   const openStatsModal = useCallback(() => setIsStatsModalOpen(true), []);
   const closeStatsModal = useCallback(() => setIsStatsModalOpen(false), []);
 
   const handleClientCreated = useCallback((client: Client) => {
-    setRows((prev) => [client, ...prev.filter((row) => row.id !== client.id)]);
+    const normalized = normalizeClient(client);
+    setRows((prev) => [normalized, ...prev.filter((row) => row.id !== normalized.id)]);
     setTableRefreshKey((key) => key + 1);
   }, []);
 

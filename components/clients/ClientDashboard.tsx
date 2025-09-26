@@ -10,6 +10,7 @@ import { ClientEditModal } from './ClientEditModal';
 import { ClientMobileCards } from './ClientMobileCards';
 import { ClientDesktopTable } from './ClientDesktopTable';
 import { ClientTabletTable } from './ClientTabletTable';
+import { normalizeClient } from '../../lib/normalizeClient';
 
 type FlipState = 'details' | 'edit' | null;
 
@@ -49,7 +50,8 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
         setError(queryError.message);
         setRows([]);
       } else {
-        setRows((data as Client[]) ?? []);
+        const normalized = ((data ?? []) as Client[]).map(normalizeClient);
+        setRows(normalized);
       }
     };
 
@@ -65,13 +67,14 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
   }, [rows, onRowsChange]);
 
   const handleEditClient = (client: Client) => {
-    setEditingClient(client);
+    setEditingClient(normalizeClient(client));
     setIsEditModalOpen(true);
   };
 
   const handleClientUpdated = (updated: Client) => {
-    setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
-    setEditingClient(updated);
+    const normalized = normalizeClient(updated);
+    setRows((prev) => prev.map((row) => (row.id === normalized.id ? normalized : row)));
+    setEditingClient(normalized);
   };
 
   const handleClientDeleted = (clientId: string) => {

@@ -30,8 +30,9 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
         const fullName = `${(client.first_name ?? '').trim()} ${(client.last_name ?? '').trim()}`.trim() || 'Senza nome';
         const contactInfo = client.phone ?? client.email ?? client.notes ?? 'Nessuna informazione disponibile';
         const contactLabel = client.phone ? 'Telefono' : client.email ? 'Email' : client.notes ? 'Note' : 'Info';
-        const primaryTag = client.tags?.[0] ?? null;
-        const extraTagCount = primaryTag ? Math.max(0, (client.tags?.length ?? 0) - 1) : 0;
+        const tags = Array.isArray(client.tags)
+          ? client.tags.filter((tag) => (tag ?? '').trim().length > 0)
+          : [];
         const cardStyle = { '--flip-card-height': '420px' } as React.CSSProperties;
         const flipState = flippedCards[client.id] ?? null;
 
@@ -55,11 +56,17 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
                   </div>
                 </div>
 
-                {primaryTag && (
-                  <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-200">
-                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
-                    {primaryTag}
-                    {extraTagCount > 0 && <span className="text-blue-200/70">+{extraTagCount}</span>}
+                {tags.length > 0 && (
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {tags.map((tag, index) => (
+                      <span
+                        key={`${client.id}-tag-${index}`}
+                        className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-100"
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-blue-300" />
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 )}
 
@@ -182,11 +189,11 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
                       />
                     )}
                     {client.notes && <InfoBlock label="Note" value={client.notes} multiline />}
-                    {Array.isArray(client.tags) && client.tags.length > 0 && (
+                    {tags.length > 0 && (
                       <div className="rounded-2xl border border-neutral-800/70 bg-neutral-900/70 p-3">
                         <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">Tags</span>
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {client.tags.map((tag, idx) => (
+                          {tags.map((tag, idx) => (
                             <span
                               key={idx}
                               className="inline-flex items-center rounded-full bg-neutral-800 px-3 py-1 text-xs font-medium text-neutral-200"

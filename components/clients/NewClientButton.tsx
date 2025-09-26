@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AddressAutocomplete } from '../AddressAutocomplete';
 import { TagInput } from '../TagInput';
 import { useToast } from '../Toaster';
@@ -27,6 +27,23 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
   const supabase = useSupabaseSafe();
+
+  useEffect(() => {
+    if (!open) return;
+    if (typeof document === 'undefined') return;
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    const previousTouchAction = body.style.touchAction;
+
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.touchAction = previousTouchAction;
+    };
+  }, [open]);
 
   async function createClient(e: React.FormEvent) {
     e.preventDefault();
@@ -94,8 +111,10 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
           onClick={() => !saving && setOpen(false)}
         >
           <div
-            className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-neutral-800/70 bg-neutral-950/95 shadow-[0_25px_70px_-30px_rgba(0,0,0,0.8)]"
+            className="relative w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-3xl border border-neutral-800/70 bg-neutral-950/95 shadow-[0_25px_70px_-30px_rgba(0,0,0,0.8)] flex flex-col"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
             <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-500" />
             <button
@@ -109,20 +128,21 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
               </svg>
             </button>
 
-            <div className="flex flex-col gap-6 px-5 pb-6 pt-8 sm:px-8 sm:pb-8 sm:pt-10">
-              <div className="space-y-3">
-                <span className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
-                  Nuovo cliente
-                </span>
-                <div className="space-y-1">
-                  <h3 className="text-2xl font-semibold text-neutral-50">Registra un nuovo contatto</h3>
-                  <p className="text-sm text-neutral-400">
-                    Inserisci le informazioni principali per aggiungere rapidamente il cliente alla tua pipeline.
-                  </p>
+            <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-6 pt-8 sm:px-8 sm:pb-8 sm:pt-10">
+              <div className="flex flex-col gap-6">
+                <div className="space-y-3">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+                    Nuovo cliente
+                  </span>
+                  <div className="space-y-1">
+                    <h3 className="text-2xl font-semibold text-neutral-50">Registra un nuovo contatto</h3>
+                    <p className="text-sm text-neutral-400">
+                      Inserisci le informazioni principali per aggiungere rapidamente il cliente alla tua pipeline.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <form onSubmit={createClient} className="space-y-5">
+                <form onSubmit={createClient} className="space-y-5 pb-2 sm:pb-0">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="flex flex-col gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Nome</span>
@@ -238,6 +258,7 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
                   </div>
                 </div>
               </form>
+              </div>
             </div>
           </div>
         </div>
