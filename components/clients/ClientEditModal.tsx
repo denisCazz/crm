@@ -44,6 +44,22 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
     }
   }, [client, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+    const previousTouchAction = body.style.touchAction;
+
+    body.style.overflow = 'hidden';
+    body.style.touchAction = 'none';
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.touchAction = previousTouchAction;
+    };
+  }, [isOpen]);
+
   if (!client || !isOpen) return null;
 
   async function updateClient(e: React.FormEvent) {
@@ -89,13 +105,28 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg bg-neutral-950 border border-neutral-800 rounded-2xl p-6"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] bg-neutral-950 border border-neutral-800 rounded-2xl shadow-xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
-        <h3 className="text-lg font-medium mb-4">Modifica cliente</h3>
-        <form onSubmit={updateClient} className="space-y-3">
+        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-neutral-800">
+          <h3 className="text-lg font-semibold text-neutral-100">Modifica cliente</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-800 bg-neutral-900 text-neutral-400 transition hover:text-neutral-200"
+            aria-label="Chiudi modale modifica cliente"
+          >
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={updateClient} className="flex-1 overflow-y-auto px-6 pb-6 pt-4 space-y-3 no-scrollbar" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm text-neutral-300 mb-1">Nome</label>

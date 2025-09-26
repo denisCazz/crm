@@ -172,7 +172,10 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
                 </div>
 
                 {flipState === 'details' ? (
-                  <div className="mt-4 flex-1 overflow-y-auto no-scrollbar space-y-3 pr-1">
+                  <div
+                    className="mt-4 flex-1 overflow-y-auto no-scrollbar space-y-3 pr-1"
+                    style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}
+                  >
                     <InfoBlock label="Nome completo" value={fullName} />
                     {client.phone && (
                       <InfoBlock label="Telefono" value={client.phone} href={`tel:${client.phone}`} hrefLabel="Chiama" />
