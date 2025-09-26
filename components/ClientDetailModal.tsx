@@ -12,16 +12,6 @@ interface ClientDetailModalProps {
 export default function ClientDetailModal({ client, isOpen, onClose, onEdit }: ClientDetailModalProps) {
   if (!isOpen || !client) return null;
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('it-IT', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   const hasCoordinates = client.lat && client.lon;
 
   return (

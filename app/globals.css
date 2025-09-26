@@ -129,8 +129,8 @@ body {
 /* Card Flip Animation Styles */
 .flip-card {
   perspective: 1000px;
-  height: 320px;
-  min-height: 320px;
+  height: var(--flip-card-height, 320px);
+  min-height: var(--flip-card-height, 320px);
 }
 
 .flip-card-inner {
@@ -148,8 +148,8 @@ body {
 .flip-card-front, .flip-card-back {
   position: absolute;
   width: 100%;
-  height: 320px;
-  min-height: 320px;
+  height: var(--flip-card-height, 320px);
+  min-height: var(--flip-card-height, 320px);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   border-radius: 0.5rem;

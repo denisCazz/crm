@@ -1,5 +1,5 @@
 'use client';
-import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // Verifica che le variabili d'ambiente esistano
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
