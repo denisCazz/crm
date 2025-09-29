@@ -70,6 +70,7 @@ function isLicenseCurrentlyActive(license: License): boolean {
 function AdminApp() {
   const supabase = useSupabaseSafe();
   const { push } = useToast();
+  const [isMounted, setIsMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [adminStatus, setAdminStatus] = useState<'unknown' | 'checking' | 'granted' | 'denied'>('unknown');
@@ -83,6 +84,10 @@ function AdminApp() {
   const [submitting, setSubmitting] = useState(false);
   const [clientSearch, setClientSearch] = useState('');
   const [licenseSearch, setLicenseSearch] = useState('');
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!supabase) {
@@ -348,6 +353,15 @@ function AdminApp() {
     });
   }, [licenseSearch, licenses]);
 
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col items-center justify-center gap-4">
+        <div className="h-12 w-12 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+        <p className="text-sm text-neutral-400">Caricamento...</p>
+      </div>
+    );
+  }
+
   if (!supabase) {
     return (
       <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col items-center justify-center px-6 text-center">
@@ -380,7 +394,7 @@ function AdminApp() {
         <div className="max-w-md space-y-4 rounded-3xl border border-red-900/70 bg-red-950/40 px-6 py-8">
           <h2 className="text-xl font-semibold text-red-100">Accesso non autorizzato</h2>
           <p className="text-sm text-red-200/80">
-            Il tuo account non dispone dei permessi amministrativi. Contatta un amministratore per ottenere l'accesso.
+            Il tuo account non dispone dei permessi amministrativi. Contatta un amministratore per ottenere l&apos;accesso.
           </p>
           <Link
             href="/"
@@ -640,7 +654,7 @@ function AdminApp() {
                 value={licenseForm.userId}
                 onChange={(event) => setLicenseForm((prev) => ({ ...prev, userId: event.target.value }))}
                 className="w-full rounded-xl border border-neutral-700/60 bg-neutral-800 px-4 py-2.5 text-sm text-neutral-100 placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                placeholder="UUID dell'utente Supabase"
+                placeholder="UUID dell&apos;utente Supabase"
               />
             </div>
 
