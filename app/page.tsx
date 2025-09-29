@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
 
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
-import { Client } from "../types";
+import { Client, License } from "../types";
 import { useSupabaseSafe } from "../lib/supabase";
 import { ClientDashboard } from "../components/clients/ClientDashboard";
 import { NewClientButton } from "../components/clients/NewClientButton";
@@ -26,6 +26,13 @@ function MainApp() {
   const [rows, setRows] = useState<Client[]>([]);
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [licenseState, setLicenseState] = useState<
+    | { status: "idle" }
+    | { status: "checking" }
+    | { status: "active"; license: License }
+    | { status: "inactive"; reason: string }
+    | { status: "error"; message: string }
+  >({ status: "idle" });
   const { push } = useToast();
   const supabase = useSupabaseSafe();
 
@@ -65,6 +72,69 @@ function MainApp() {
       subscription?.subscription.unsubscribe();
     };
   }, [supabase]);
+
+  useEffect(() => {
+    if (!supabase || !user) {
+      setLicenseState((prev) => (prev.status === "idle" ? prev : { status: "idle" }));
+      return;
+    }
+
+    let cancelled = false;
+    setLicenseState({ status: "checking" });
+
+    const evaluateLicense = async () => {
+      const { data, error } = await supabase
+        .from("licenses")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("expires_at", { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error("Failed to fetch license", error);
+        setLicenseState({ status: "error", message: error.message });
+        return;
+      }
+
+      if (!data) {
+        setLicenseState({
+          status: "inactive",
+          reason:
+            "Non è stata trovata alcuna licenza attiva associata a questo account. Contatta l'amministratore per abilitarla.",
+        });
+        return;
+      }
+
+      const now = Date.now();
+      const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : null;
+      const isExpired = typeof expiresAt === "number" && !Number.isNaN(expiresAt) && expiresAt < now;
+      const isDisabled = data.status === "inactive" || data.status === "expired";
+
+      if (isExpired || isDisabled) {
+        setLicenseState({
+          status: "inactive",
+          reason:
+            isExpired
+              ? "La licenza è scaduta. Contatta il supporto per rinnovarla."
+              : "La licenza risulta inattiva. Contatta l'amministratore per verificarla.",
+        });
+        return;
+      }
+
+      setLicenseState({ status: "active", license: data as License });
+    };
+
+    evaluateLicense();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, user]);
+
+  const isLicenseActive = useMemo(() => licenseState.status === "active", [licenseState]);
 
   const handleLogout = useCallback(async () => {
     if (!supabase) return;
@@ -131,6 +201,67 @@ function MainApp() {
     return <LoginForm />;
   }
 
+  if (licenseState.status === "checking" || licenseState.status === "idle") {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center gap-4 text-neutral-300">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
+        <p className="text-sm text-neutral-400">Verifica della licenza in corso…</p>
+      </div>
+    );
+  }
+
+  if (licenseState.status === "error") {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
+        <div className="rounded-3xl border border-red-900/80 bg-red-950/40 px-6 py-8 max-w-md space-y-4">
+          <h2 className="text-xl font-semibold text-red-100">Impossibile verificare la licenza</h2>
+          <p className="text-sm text-red-200/80">
+            Si è verificato un errore durante la verifica della licenza: {licenseState.message}
+          </p>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600/80 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-600"
+          >
+            Esci
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (licenseState.status === "inactive") {
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
+        <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 px-6 py-8 max-w-md space-y-5">
+          <div className="flex items-center justify-center">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20 text-amber-200">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold text-neutral-50">Licenza richiesta</h2>
+            <p className="text-sm text-neutral-300">{licenseState.reason}</p>
+          </div>
+          <div className="space-y-3 text-sm text-neutral-400">
+            <p>
+              Se ritieni si tratti di un errore, contatta il supporto Bitora indicando l&apos;email utilizzata per l&apos;accesso.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700/60 bg-neutral-900/70 px-4 py-2.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-800"
+          >
+            Esci
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
@@ -168,20 +299,23 @@ function MainApp() {
                     </svg>
                     Mappa clienti
                   </Link>
-                  <NewClientButton onCreated={handleClientCreated} fullWidth />
+                  {isLicenseActive && <NewClientButton onCreated={handleClientCreated} fullWidth />}
                 </div>
               </div>
             </div>
           </div>
         </header>
 
-        <ClientDashboard
-          user={user}
-          onRowsChange={handleRowsChange}
-          isStatsModalOpen={isStatsModalOpen}
-          onStatsClose={closeStatsModal}
-          refreshKey={tableRefreshKey}
-        />
+        {isLicenseActive && (
+          <ClientDashboard
+            user={user}
+            onRowsChange={handleRowsChange}
+            isStatsModalOpen={isStatsModalOpen}
+            onStatsClose={closeStatsModal}
+            refreshKey={tableRefreshKey}
+            isEnabled={isLicenseActive}
+          />
+        )}
       </div>
 
       <div className="py-8 text-center text-sm text-neutral-500 bg-neutral-950 border-t border-neutral-800">

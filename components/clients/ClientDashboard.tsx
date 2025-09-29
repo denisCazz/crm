@@ -20,9 +20,10 @@ interface ClientDashboardProps {
   isStatsModalOpen: boolean;
   onStatsClose: () => void;
   refreshKey: number;
+  isEnabled?: boolean;
 }
 
-export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsClose, refreshKey }: ClientDashboardProps) {
+export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsClose, refreshKey, isEnabled = true }: ClientDashboardProps) {
   const [rows, setRows] = useState<Client[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -33,7 +34,7 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
   const supabase = useSupabaseSafe();
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase || !isEnabled) return;
     let cancelled = false;
 
     const loadClients = async () => {
@@ -60,7 +61,7 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
     return () => {
       cancelled = true;
     };
-  }, [user.id, supabase, refreshKey]);
+  }, [user.id, supabase, refreshKey, isEnabled]);
 
   useEffect(() => {
     onRowsChange?.(rows);
@@ -90,6 +91,10 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
   const handleFlip = (clientId: string, state: FlipState) => {
     setFlippedCards((prev) => ({ ...prev, [clientId]: state }));
   };
+
+  if (!isEnabled) {
+    return null;
+  }
 
   return (
     <section className="mt-4 sm:mt-8 space-y-6">
