@@ -299,6 +299,15 @@ function MainApp() {
                     </svg>
                     Mappa clienti
                   </Link>
+                  <Link
+                    href="/prenotazioni"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-3 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h8m-8 4h5m-7 7.5l2.4-2.4A2 2 0 017.828 15H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v11a1 1 0 001.707.707z" />
+                    </svg>
+                    Prenotazioni viaggi
+                  </Link>
                   {isLicenseActive && <NewClientButton onCreated={handleClientCreated} fullWidth />}
                 </div>
               </div>
