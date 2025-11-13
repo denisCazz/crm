@@ -23,29 +23,11 @@ const LUNCH_START_MIN = 13 * 60;
 const LUNCH_END_MIN = 14 * 60;
 const DEFAULT_SLOT_COUNT = 7;
 
-function parseTimeToMinutes(value: string): number | null {
-  const trimmed = value.trim();
-  if (!/^\d{2}:\d{2}$/.test(trimmed)) return null;
-  const [h, m] = trimmed.split(":").map((n) => Number.parseInt(n, 10));
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-  return h * 60 + m;
-}
-
 function minutesToTime(total: number): string {
   const t = Math.max(0, total);
   const h = String(Math.floor(t / 60)).padStart(2, "0");
   const m = String(t % 60).padStart(2, "0");
   return `${h}:${m}`;
-}
-
-function formatMinutes(total: number): string {
-  const abs = Math.abs(total);
-  const h = Math.floor(abs / 60);
-  const m = abs % 60;
-  if (h && m) return `${h}h ${m}m`;
-  if (h) return `${h}h`;
-  return `${m}m`;
 }
 
 function buildDefaultTimeSlots(count: number): Array<{ start: string; end: string }> {
@@ -151,7 +133,7 @@ function PrenotazioniContent() {
         headerBlockH: 12,
       } as const;
 
-      const cardHeight = (reasonLines: number) => {
+      const cardHeight = () => {
         return (
           layout.paddingY * 2 +
           layout.headerOffset +
@@ -191,7 +173,7 @@ function PrenotazioniContent() {
       header();
 
       slots.forEach((slot, idx) => {
-        const h = cardHeight(0);
+        const h = cardHeight();
         const after = idx < slots.length - 1 ? layout.cardGap : 0;
         need(h + after);
 
@@ -358,7 +340,7 @@ function PrenotazioniContent() {
               </div>
 
               <label className="mt-4 flex flex-col gap-1 text-sm">
-                <span className="text-neutral-300">Motivo dell'intervento</span>
+                <span className="text-neutral-300">Motivo dell&apos;intervento</span>
                 <textarea
                   value={slot.reason}
                   onChange={(e) => updateSlot(slot.id, { reason: e.target.value })}
@@ -389,7 +371,7 @@ function PrenotazioniContent() {
           </button>
         </div>
 
-        {!hasContent && <p className="text-xs text-neutral-500">Compila almeno un campo per attivare l'esportazione PDF.</p>}
+        {!hasContent && <p className="text-xs text-neutral-500">Compila almeno un campo per attivare l&apos;esportazione PDF.</p>}
       </div>
     </div>
   );
