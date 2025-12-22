@@ -9,12 +9,12 @@ interface TagInputProps {
 }
 
 const TAG_PRESETS = [
-  { label: 'Cliente Caldo', color: 'bg-red-600 text-red-100' },
-  { label: 'Prospect', color: 'bg-yellow-600 text-yellow-100' },
-  { label: 'Fornitore', color: 'bg-blue-600 text-blue-100' },
-  { label: 'Partner', color: 'bg-purple-600 text-purple-100' },
-  { label: 'Lead', color: 'bg-green-600 text-green-100' },
-  { label: 'Inattivo', color: 'bg-gray-600 text-gray-100' }
+  { label: 'Cliente Caldo', color: 'bg-danger/80 text-white' },
+  { label: 'Prospect', color: 'bg-warning/80 text-white' },
+  { label: 'Fornitore', color: 'bg-primary/80 text-white' },
+  { label: 'Partner', color: 'bg-secondary/80 text-white' },
+  { label: 'Lead', color: 'bg-success/80 text-white' },
+  { label: 'Inattivo', color: 'bg-muted/50 text-foreground' }
 ];
 
 export function TagInput({ tags, onChange, placeholder = "Aggiungi tag...", className }: TagInputProps) {
@@ -45,17 +45,17 @@ export function TagInput({ tags, onChange, placeholder = "Aggiungi tag...", clas
 
   const getTagColor = (tag: string) => {
     const preset = TAG_PRESETS.find(p => p.label.toLowerCase() === tag.toLowerCase());
-    return preset?.color || 'bg-neutral-700 text-neutral-200';
+    return preset?.color || 'bg-surface-elevated text-foreground';
   };
 
   return (
     <div className={`relative ${className}`}>
       {/* Tag Display */}
-      <div className="min-h-[42px] bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 flex flex-wrap items-center gap-2">
+      <div className="input-field min-h-[42px] flex flex-wrap items-center gap-2 !py-2">
         {tags.map((tag, index) => (
           <span
             key={index}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${getTagColor(tag)}`}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium ${getTagColor(tag)} animate-scale-in`}
           >
             {tag}
             <button
@@ -78,32 +78,33 @@ export function TagInput({ tags, onChange, placeholder = "Aggiungi tag...", clas
           onKeyDown={handleKeyDown}
           onFocus={() => setShowPresets(true)}
           placeholder={tags.length === 0 ? placeholder : ''}
-          className="flex-1 min-w-[100px] bg-transparent outline-none text-white placeholder-neutral-500"
+          className="flex-1 min-w-[100px] bg-transparent outline-none text-foreground placeholder-muted"
         />
       </div>
 
       {/* Preset Tags */}
       {showPresets && (
-        <div className="absolute z-10 w-full mt-1 bg-neutral-900 border border-neutral-700 rounded-xl shadow-lg p-2">
-          <div className="text-xs text-neutral-400 mb-2">Tag suggeriti:</div>
-          <div className="flex flex-wrap gap-1">
+        <div className="dropdown-menu animate-slide-down">
+          <div className="text-xs text-muted px-3 py-2">Tag suggeriti:</div>
+          <div className="flex flex-wrap gap-1.5 px-3 pb-2">
             {TAG_PRESETS.map((preset) => (
               <button
                 key={preset.label}
                 type="button"
                 onClick={() => addTag(preset.label)}
                 disabled={tags.includes(preset.label)}
-                className={`px-2 py-1 rounded-lg text-xs font-medium transition-opacity ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
                   tags.includes(preset.label) 
-                    ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:opacity-80'
+                    ? 'opacity-40 cursor-not-allowed' 
+                    : 'hover:scale-105 hover:shadow-lg'
                 } ${preset.color}`}
               >
                 {preset.label}
               </button>
             ))}
           </div>
-          <div className="text-xs text-neutral-500 mt-2">
+          <div className="divider my-0" />
+          <div className="text-xs text-muted px-3 py-2">
             Digita e premi Enter per creare tag personalizzati
           </div>
         </div>

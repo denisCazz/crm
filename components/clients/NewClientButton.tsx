@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { AddressAutocomplete } from '../AddressAutocomplete';
 import { TagInput } from '../TagInput';
 import { useToast } from '../Toaster';
@@ -12,7 +12,12 @@ interface NewClientButtonProps {
   fullWidth?: boolean;
 }
 
-export function NewClientButton({ onCreated, fullWidth = false }: NewClientButtonProps) {
+export interface NewClientButtonRef {
+  openModal: () => void;
+}
+
+export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonProps>(
+  function NewClientButton({ onCreated, fullWidth = false }, ref) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -27,6 +32,10 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
   const supabase = useSupabaseSafe();
+
+  useImperativeHandle(ref, () => ({
+    openModal: () => setOpen(true),
+  }));
 
   useEffect(() => {
     if (!open) return;
@@ -64,12 +73,13 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
         phone: form.phone || null,
         email: form.email || null,
         tags: form.tags.length > 0 ? form.tags : null,
+        status: 'new',
       };
 
       const { data, error } = await supabase
         .from('clients')
         .insert(insert)
-        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, created_at, lat, lon')
+        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, status, first_contacted_at, created_at, lat, lon')
         .single();
 
       if (error) throw error;
@@ -98,167 +108,182 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`inline-flex ${fullWidth ? 'w-full' : ''} items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 px-4 sm:px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:shadow-blue-500/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-400 focus-visible:ring-offset-neutral-950`}
+        className={`btn btn-primary ${fullWidth ? 'w-full' : ''}`}
       >
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m7-7H5" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
         Nuovo cliente
       </button>
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 sm:p-6"
+          className="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4 sm:p-6 animate-fade-in"
           onClick={() => !saving && setOpen(false)}
         >
           <div
-            className="relative w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-3xl border border-neutral-800/70 bg-neutral-950/95 shadow-[0_25px_70px_-30px_rgba(0,0,0,0.8)] flex flex-col"
+            className="relative w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden modal-content flex flex-col animate-scale-in"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >
-            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-500" />
+            {/* Gradient top bar */}
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[rgb(var(--color-primary))] via-[rgb(var(--color-secondary))] to-[rgb(var(--color-accent))]" />
+            
+            {/* Close button */}
             <button
               type="button"
               onClick={() => !saving && setOpen(false)}
-              className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-700/70 bg-neutral-900/70 text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-200"
+              className="absolute right-4 top-4 btn btn-ghost btn-icon z-10"
               aria-label="Chiudi modale nuovo cliente"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
             <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-6 pt-8 sm:px-8 sm:pb-8 sm:pt-10">
               <div className="flex flex-col gap-6">
+                {/* Header */}
                 <div className="space-y-3">
-                  <span className="inline-flex items-center gap-2 rounded-full bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.35em] text-blue-300">
+                  <span className="badge badge-primary">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                    </svg>
                     Nuovo cliente
                   </span>
                   <div className="space-y-1">
-                    <h3 className="text-2xl font-semibold text-neutral-50">Registra un nuovo contatto</h3>
-                    <p className="text-sm text-neutral-400">
-                      Inserisci le informazioni principali per aggiungere rapidamente il cliente alla tua pipeline.
+                    <h3 className="text-xl font-bold text-foreground">Registra un nuovo contatto</h3>
+                    <p className="text-sm text-muted">
+                      Inserisci le informazioni per aggiungere il cliente alla tua pipeline.
                     </p>
                   </div>
                 </div>
 
-                <form onSubmit={createClient} className="space-y-5 pb-2 sm:pb-0">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Nome</span>
-                    <input
-                      value={form.first_name}
-                      onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
-                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Cognome</span>
-                    <input
-                      value={form.last_name}
-                      onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
-                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Indirizzo</span>
-                    <span className="text-[11px] text-neutral-500">Suggerimenti automatici con OpenStreetMap</span>
+                {/* Form */}
+                <form onSubmit={createClient} className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Nome</span>
+                      <input
+                        value={form.first_name}
+                        onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                        className="input-field"
+                        placeholder="Mario"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Cognome</span>
+                      <input
+                        value={form.last_name}
+                        onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                        className="input-field"
+                        placeholder="Rossi"
+                      />
+                    </label>
                   </div>
-                  <AddressAutocomplete
-                    value={form.address}
-                    onChange={(value) => setForm((f) => ({ ...f, address: value }))}
-                    placeholder="Via, numero civico, città…"
-                    className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  />
-                </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Telefono</span>
-                    <input
-                      type="tel"
-                      value={form.phone}
-                      onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      placeholder="+39 123 456 7890"
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Indirizzo</span>
+                      <span className="text-[11px] text-muted-foreground">Suggerimenti automatici</span>
+                    </div>
+                    <AddressAutocomplete
+                      value={form.address}
+                      onChange={(value) => setForm((f) => ({ ...f, address: value }))}
+                      placeholder="Via, numero civico, città…"
+                      className="input-field"
                     />
-                  </label>
-                  <label className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Email</span>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                      className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.75 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                      placeholder="cliente@email.com"
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Telefono</span>
+                      <input
+                        type="tel"
+                        value={form.phone}
+                        onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                        className="input-field"
+                        placeholder="+39 123 456 7890"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Email</span>
+                      <input
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                        className="input-field"
+                        placeholder="cliente@email.com"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted">Note</span>
+                    <textarea
+                      value={form.notes}
+                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                      rows={3}
+                      className="input-field resize-none"
+                      placeholder="Dettagli utili, prossimi step, referenti..."
                     />
-                  </label>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Note</span>
-                  <textarea
-                    value={form.notes}
-                    onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-2xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-3 text-sm text-neutral-100 placeholder-neutral-500 transition focus:border-blue-500/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                    placeholder="Dettagli utili, prossimi step, referenti..."
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Tag</span>
-                  <TagInput
-                    tags={form.tags}
-                    onChange={(tags) => setForm((f) => ({ ...f, tags }))}
-                    placeholder="Aggiungi tag per categorizzare il cliente…"
-                    className="mt-1"
-                  />
-                </div>
-
-                {err && (
-                  <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-3 py-2 text-sm text-red-300">
-                    {err}
                   </div>
-                )}
 
-                <div className="flex flex-col gap-3 border-t border-neutral-800/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-neutral-500">I dati potranno essere aggiornati in qualsiasi momento.</p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setOpen(false)}
-                      disabled={saving}
-                      className="inline-flex items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Annulla
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:shadow-blue-500/40 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {saving ? (
-                        <>
-                          <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"></span>
-                          Salvataggio…
-                        </>
-                      ) : (
-                        <>
-                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m7-7H5" />
-                          </svg>
-                          Salva cliente
-                        </>
-                      )}
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tag</span>
+                    <TagInput
+                      tags={form.tags}
+                      onChange={(tags) => setForm((f) => ({ ...f, tags }))}
+                      placeholder="Aggiungi tag per categorizzare..."
+                      className="mt-1"
+                    />
                   </div>
-                </div>
-              </form>
+
+                  {err && (
+                    <div className="rounded-xl bg-danger/10 border border-danger/20 px-4 py-3 text-sm text-danger flex items-center gap-2">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {err}
+                    </div>
+                  )}
+
+                  <div className="divider" />
+
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted">I dati potranno essere aggiornati in qualsiasi momento.</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setOpen(false)}
+                        disabled={saving}
+                        className="btn btn-secondary"
+                      >
+                        Annulla
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="btn btn-primary"
+                      >
+                        {saving ? (
+                          <>
+                            <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+                            Salvataggio…
+                          </>
+                        ) : (
+                          <>
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Salva cliente
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
@@ -266,4 +291,4 @@ export function NewClientButton({ onCreated, fullWidth = false }: NewClientButto
       )}
     </>
   );
-}
+});

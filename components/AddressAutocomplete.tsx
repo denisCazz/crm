@@ -21,6 +21,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch suggestions da Nominatim
@@ -117,7 +118,7 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
   // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (inputRef.current && !inputRef.current.contains(event.target as Node)) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
     };
@@ -127,9 +128,10 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
   }, []);
 
   return (
-    <div className="relative" ref={inputRef}>
+    <div className="relative" ref={containerRef}>
       <div className="relative">
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={handleInputChange}
@@ -141,32 +143,36 @@ export function AddressAutocomplete({ value, onChange, placeholder, className }:
         />
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-neutral-400 border-t-neutral-600 rounded-full animate-spin"></div>
+            <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin"></div>
           </div>
         )}
       </div>
 
       {/* Suggestions dropdown */}
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+        <div className="dropdown-menu max-h-60 overflow-y-auto animate-slide-down">
           {suggestions.map((suggestion, index) => (
             <button
               key={suggestion.place_id}
               type="button"
               onClick={() => handleSuggestionClick(suggestion)}
-              className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-800 transition-colors ${
-                index === selectedIndex ? 'bg-neutral-800' : ''
+              className={`dropdown-item w-full text-left ${
+                index === selectedIndex ? 'bg-primary/10 text-primary' : ''
               }`}
             >
               <div className="flex items-start gap-2">
-                <span className="text-xs mt-0.5">📍</span>
+                <svg className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
                 <div className="flex-1 min-w-0">
-                  <div className="truncate">{suggestion.display_name}</div>
+                  <div className="text-sm truncate">{suggestion.display_name}</div>
                 </div>
               </div>
             </button>
           ))}
-          <div className="px-3 py-2 text-xs text-neutral-500 border-t border-neutral-800">
+          <div className="divider my-0" />
+          <div className="px-3 py-2 text-xs text-muted">
             Usa ↑↓ per navigare, Enter per selezionare
           </div>
         </div>

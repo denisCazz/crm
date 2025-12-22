@@ -162,7 +162,7 @@ function AdminApp() {
         const [clientsRes, licensesRes] = await Promise.all([
           supabase
             .from('clients')
-            .select('id, owner_id, first_name, last_name, address, phone, email, notes, tags, lat, lon, created_at')
+            .select('id, owner_id, first_name, last_name, address, phone, email, notes, tags, status, first_contacted_at, lat, lon, created_at')
             .order('created_at', { ascending: false }),
           supabase
             .from('licenses')

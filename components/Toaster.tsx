@@ -16,10 +16,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const remove = (id: string) => setToasts((t) => t.filter((x) => x.id !== id));
 
-  const push = useCallback((kind: ToastKind, message: string, ms = 3000) => {
+  const push = useCallback((kind: ToastKind, message: string, ms = 4000) => {
     const id = `${idPrefix}-${Math.random().toString(36).slice(2, 8)}`;
     setToasts((t) => [...t, { id, kind, message }]);
-    // auto-dismiss
     setTimeout(() => remove(id), ms);
   }, [idPrefix]);
 
@@ -40,37 +39,65 @@ export function useToast() {
 }
 
 function ToasterUI({ toasts, onClose }: { toasts: Toast[]; onClose: (id: string) => void }) {
-  return (
-    <div className="fixed inset-x-0 top-3 z-[9999] flex justify-center px-3 pointer-events-none">
-      <div className="w-full max-w-md space-y-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            role="status"
-            className={[
-              "pointer-events-auto rounded-xl border px-4 py-3 shadow-lg backdrop-blur",
-              "bg-neutral-900/80 border-neutral-800 text-neutral-100",
-              t.kind === "success" ? "ring-1 ring-emerald-500/20" : "",
-              t.kind === "error" ? "ring-1 ring-red-500/20" : "",
-              t.kind === "info" ? "ring-1 ring-sky-500/20" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 text-sm">
-                {t.kind === "success" ? "✅" : t.kind === "error" ? "⚠️" : "ℹ️"}
-              </span>
-              <p className="text-sm leading-snug">{t.message}</p>
-              <button
-                onClick={() => onClose(t.id)}
-                className="ml-auto text-xs text-neutral-400 hover:text-neutral-200"
-                aria-label="Chiudi notifica"
-              >
-                Chiudi
-              </button>
-            </div>
-          </div>
-        ))}
+  const icons = {
+    success: (
+      <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center flex-shrink-0">
+        <svg className="w-4 h-4 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
       </div>
+    ),
+    error: (
+      <div className="w-8 h-8 rounded-full bg-danger/20 flex items-center justify-center flex-shrink-0">
+        <svg className="w-4 h-4 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </div>
+    ),
+    info: (
+      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+        <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+    ),
+  };
+
+  const ringColors = {
+    success: 'ring-success/30',
+    error: 'ring-danger/30',
+    info: 'ring-primary/30',
+  };
+
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center gap-2 px-4 pointer-events-none w-full max-w-md">
+      {toasts.map((t, index) => (
+        <div
+          key={t.id}
+          role="status"
+          className={`
+            pointer-events-auto w-full
+            glass-strong rounded-xl px-4 py-3
+            ring-1 ${ringColors[t.kind]}
+            animate-slide-down shadow-theme-lg
+          `}
+          style={{ animationDelay: `${index * 50}ms` }}
+        >
+          <div className="flex items-center gap-3">
+            {icons[t.kind]}
+            <p className="text-sm font-medium text-foreground flex-1">{t.message}</p>
+            <button
+              onClick={() => onClose(t.id)}
+              className="btn btn-ghost btn-icon p-1.5 text-muted hover:text-foreground"
+              aria-label="Chiudi notifica"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

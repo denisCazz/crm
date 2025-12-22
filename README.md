@@ -12,6 +12,12 @@ Mini CRM costruito con Next.js App Router e Supabase. Gestisce clienti, tags, no
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 NEXT_PUBLIC_ADMIN_EMAILS=admin@example.com,ceo@example.com
+
+# Necessarie per le API server (settings + invio email)
+SUPABASE_SERVICE_ROLE_KEY=...
+
+# Usata per cifrare la password SMTP salvata su Supabase
+SMTP_ENCRYPTION_SECRET=una-stringa-lunga-e-segreta
 ```
 
 ## Avvio locale
@@ -25,9 +31,16 @@ Apri [http://localhost:3000](http://localhost:3000) e accedi con un utente Supab
 
 ## Setup Supabase
 
-Nel repository trovi lo script `supabase/sql/licenses.sql` che crea le tabelle `licenses` e `admin_users`, i trigger e le policy RLS suggerite. Eseguilo dal SQL Editor di Supabase o tramite CLI prima di avviare l&apos;applicazione.
+Nel repository trovi gli script:
+
+- `supabase/sql/licenses.sql` (licenze + admin)
+- `supabase/sql/email_marketing.sql` (template email, invii email, impostazioni SMTP/brand, tracking nuovi clienti)
+
+Eseguili dal SQL Editor di Supabase o tramite CLI prima di avviare l&apos;applicazione.
 
 Lo script assume l&apos;esistenza della tabella `public.clients` con la colonna `owner_id` che punta a `auth.users.id`.
+
+> Nota: l&apos;invio email usa SMTP tramite Nodemailer. Le credenziali SMTP vengono salvate nella tabella `public.app_settings` ma cifrate lato server (chiave `SMTP_ENCRYPTION_SECRET`).
 
 ## Modello dati licenze
 

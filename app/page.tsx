@@ -1,17 +1,42 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { User } from "@supabase/supabase-js";
 
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
-import { Client, License } from "../types";
+import { Client, License, AppSettings } from "../types";
 import { useSupabaseSafe } from "../lib/supabase";
 import { ClientDashboard } from "../components/clients/ClientDashboard";
-import { NewClientButton } from "../components/clients/NewClientButton";
-import { UserMenuDropdown } from "../components/clients/UserMenuDropdown";
+import { NewClientButton, NewClientButtonRef } from "../components/clients/NewClientButton";
+import { Navbar } from "../components/Navbar";
+import { NewsletterModal } from "../components/NewsletterModal";
 import { normalizeClient } from "../lib/normalizeClient";
+
+const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "")
+  .split(",")
+  .map((email) => email.trim().toLowerCase())
+  .filter((email) => email.length > 0);
+
+function isAdminUser(user: User | null): boolean {
+  if (!user) return false;
+  const envAdmin = Boolean(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
+  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
+  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
+  const metadataAdmin = userMetadata["is_admin"] === true || appMetadata["role"] === "admin";
+  return envAdmin || metadataAdmin;
+}
+
+function adminBypassLicense(user: User): License {
+  return {
+    id: "admin-bypass",
+    user_id: user.id,
+    status: "active",
+    expires_at: null,
+    plan: "admin",
+    created_at: new Date().toISOString(),
+  } as License;
+}
 
 function getDisplayName(user: User | null): string {
   if (!user?.email) return "Cliente";
@@ -26,6 +51,9 @@ function MainApp() {
   const [rows, setRows] = useState<Client[]>([]);
   const [tableRefreshKey, setTableRefreshKey] = useState(0);
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+  const [isNewsletterModalOpen, setIsNewsletterModalOpen] = useState(false);
+  const [sendingNewsletter, setSendingNewsletter] = useState(false);
+  const [brandSettings, setBrandSettings] = useState<Pick<AppSettings, 'brand_name' | 'logo_url'> | null>(null);
   const [licenseState, setLicenseState] = useState<
     | { status: "idle" }
     | { status: "checking" }
@@ -35,6 +63,7 @@ function MainApp() {
   >({ status: "idle" });
   const { push } = useToast();
   const supabase = useSupabaseSafe();
+  const newClientButtonRef = useRef<NewClientButtonRef>(null);
 
   const handleRowsChange = useCallback((next: Client[]) => {
     setRows(next.map((client) => normalizeClient(client)));
@@ -43,6 +72,49 @@ function MainApp() {
   const openStatsModal = useCallback(() => setIsStatsModalOpen(true), []);
   const closeStatsModal = useCallback(() => setIsStatsModalOpen(false), []);
 
+  const openNewsletterModal = useCallback(() => setIsNewsletterModalOpen(true), []);
+  const closeNewsletterModal = useCallback(() => setIsNewsletterModalOpen(false), []);
+
+  const handleNewClient = useCallback(() => {
+    newClientButtonRef.current?.openModal();
+  }, []);
+
+  const handleSendNewsletter = useCallback(async (templateId: string) => {
+    if (!supabase) return;
+    
+    setSendingNewsletter(true);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) {
+        push("error", "Sessione scaduta. Ricarica la pagina.");
+        return;
+      }
+
+      const res = await fetch("/api/email/newsletter", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.session.access_token}`,
+        },
+        body: JSON.stringify({ template_id: templateId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        push("error", data.error || "Errore nell'invio della newsletter");
+        return;
+      }
+
+      push("success", data.message || `Newsletter inviata a ${data.recipients_count} destinatari!`);
+      setIsNewsletterModalOpen(false);
+    } catch (err) {
+      push("error", "Errore di connessione. Riprova più tardi.");
+    } finally {
+      setSendingNewsletter(false);
+    }
+  }, [supabase, push]);
+
   const handleClientCreated = useCallback((client: Client) => {
     const normalized = normalizeClient(client);
     setRows((prev) => [normalized, ...prev.filter((row) => row.id !== normalized.id)]);
@@ -50,8 +122,38 @@ function MainApp() {
   }, []);
 
   useEffect(() => {
-    document.title = `Bitora CRM x ${getDisplayName(user)}`;
-  }, [user]);
+    const brandName = brandSettings?.brand_name || "Bitora CRM";
+    document.title = `${brandName} x ${getDisplayName(user)}`;
+  }, [user, brandSettings]);
+
+  // Fetch brand settings
+  useEffect(() => {
+    if (!supabase || !user) return;
+
+    const fetchSettings = async () => {
+      const { data: session } = await supabase.auth.getSession();
+      if (!session?.session?.access_token) return;
+
+      try {
+        const res = await fetch("/api/settings", {
+          headers: { Authorization: `Bearer ${session.session.access_token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.settings) {
+            setBrandSettings({
+              brand_name: json.settings.brand_name,
+              logo_url: json.settings.logo_url,
+            });
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    };
+
+    fetchSettings();
+  }, [supabase, user]);
 
   useEffect(() => {
     if (!supabase) {
@@ -76,6 +178,11 @@ function MainApp() {
   useEffect(() => {
     if (!supabase || !user) {
       setLicenseState((prev) => (prev.status === "idle" ? prev : { status: "idle" }));
+      return;
+    }
+
+    if (isAdminUser(user)) {
+      setLicenseState({ status: "active", license: adminBypassLicense(user) });
       return;
     }
 
@@ -189,40 +296,49 @@ function MainApp() {
     URL.revokeObjectURL(url);
   }, [rows]);
 
+  const brandName = brandSettings?.brand_name || "Bitora CRM";
+  const logoUrl = brandSettings?.logo_url;
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted">Caricamento...</p>
+        </div>
       </div>
     );
   }
 
   if (!user) {
-    return <LoginForm />;
+    return <LoginForm brandName={brandName} logoUrl={logoUrl} />;
   }
 
   if (licenseState.status === "checking" || licenseState.status === "idle") {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center gap-4 text-neutral-300">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
-        <p className="text-sm text-neutral-400">Verifica della licenza in corso…</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted">Verifica della licenza in corso…</p>
       </div>
     );
   }
 
   if (licenseState.status === "error") {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
-        <div className="rounded-3xl border border-red-900/80 bg-red-950/40 px-6 py-8 max-w-md space-y-4">
-          <h2 className="text-xl font-semibold text-red-100">Impossibile verificare la licenza</h2>
-          <p className="text-sm text-red-200/80">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <div className="card-elevated px-6 py-8 max-w-md space-y-4 border-danger/40">
+          <div className="flex justify-center">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-danger/10 text-danger">
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">Impossibile verificare la licenza</h2>
+          <p className="text-sm text-muted">
             Si è verificato un errore durante la verifica della licenza: {licenseState.message}
           </p>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600/80 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-600"
-          >
+          <button type="button" onClick={handleLogout} className="btn btn-danger w-full">
             Esci
           </button>
         </div>
@@ -232,29 +348,23 @@ function MainApp() {
 
   if (licenseState.status === "inactive") {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
-        <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 px-6 py-8 max-w-md space-y-5">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center">
+        <div className="card-elevated px-6 py-8 max-w-md space-y-5 border-warning/40">
           <div className="flex items-center justify-center">
-            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20 text-amber-200">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-warning/10 text-warning">
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </span>
           </div>
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-neutral-50">Licenza richiesta</h2>
-            <p className="text-sm text-neutral-300">{licenseState.reason}</p>
+            <h2 className="text-xl font-semibold text-foreground">Licenza richiesta</h2>
+            <p className="text-sm text-muted">{licenseState.reason}</p>
           </div>
-          <div className="space-y-3 text-sm text-neutral-400">
-            <p>
-              Se ritieni si tratti di un errore, contatta il supporto Bitora indicando l&apos;email utilizzata per l&apos;accesso.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700/60 bg-neutral-900/70 px-4 py-2.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-800"
-          >
+          <p className="text-sm text-muted-foreground">
+            Se ritieni si tratti di un errore, contatta il supporto indicando l&apos;email utilizzata per l&apos;accesso.
+          </p>
+          <button type="button" onClick={handleLogout} className="btn btn-secondary w-full">
             Esci
           </button>
         </div>
@@ -263,58 +373,49 @@ function MainApp() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        <header className="bg-gradient-to-r from-neutral-900 via-neutral-900/95 to-neutral-950 border border-neutral-800/60 rounded-2xl shadow-xl">
-          <div className="px-4 sm:px-6 py-6 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-blue-400/80">
-                <span className="h-2 w-2 rounded-full bg-blue-500" />
-                Dashboard clienti
-              </span>
-              <UserMenuDropdown
-                user={user}
-                onLogout={handleLogout}
-                onExportCSV={exportToCSV}
-                onStatsOpen={openStatsModal}
-                canExport={rows.length > 0}
-                canShowStats={rows.length > 0}
-              />
+    <div className="min-h-screen bg-background gradient-mesh">
+      {/* Navbar */}
+      <Navbar
+        user={user}
+        brandName={brandName}
+        logoUrl={logoUrl}
+        onLogout={handleLogout}
+        onNewClient={handleNewClient}
+        onNewsletter={openNewsletterModal}
+        onExportCSV={exportToCSV}
+        onStatsOpen={openStatsModal}
+        clientCount={rows.length}
+        newClientCount={rows.filter(r => r.status === 'new').length}
+        canExport={rows.length > 0}
+        canShowStats={rows.length > 0}
+        sendingNewsletter={sendingNewsletter}
+      />
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        {/* Welcome Card */}
+        <div className="card-elevated p-4 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2 max-w-2xl">
+              <h2 className="text-lg font-semibold text-foreground">
+                Bentornato, {getDisplayName(user)}! 👋
+              </h2>
+              <p className="text-sm text-muted">
+                Gestisci i tuoi clienti, monitora le interazioni e mantieni la pipeline sempre aggiornata.
+              </p>
             </div>
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3 max-w-2xl">
-                <h1 className="text-2xl sm:text-3xl font-semibold text-neutral-100 tracking-tight">Bitora CRM</h1>
-                <p className="text-sm sm:text-base text-neutral-400 max-w-xl">
-                  Gestisci i tuoi clienti, monitora le interazioni e mantieni la pipeline sempre aggiornata con un colpo d&apos;occhio.
-                </p>
-              </div>
-              <div className="w-full lg:max-w-sm">
-                <div className="grid gap-3">
-                  <Link
-                    href="/mappa"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-3 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A2 2 0 013 15.447V4.553a2 2 0 011.553-1.947L9 1m0 19l6-3m-6 3V1m6 16l5.447 2.724A2 2 0 0021 18.553V7.447a2 2 0 00-1.553-1.947L15 3m0 14V3" />
-                    </svg>
-                    Mappa clienti
-                  </Link>
-                  <Link
-                    href="/prenotazioni"
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-3 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
-                  >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7h8m-8 4h5m-7 7.5l2.4-2.4A2 2 0 017.828 15H18a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v11a1 1 0 001.707.707z" />
-                    </svg>
-                    Prenotazioni viaggi
-                  </Link>
-                  {isLicenseActive && <NewClientButton onCreated={handleClientCreated} fullWidth />}
-                </div>
-              </div>
+            <div className="w-full lg:w-auto flex-shrink-0">
+              {isLicenseActive && (
+                <NewClientButton 
+                  ref={newClientButtonRef}
+                  onCreated={handleClientCreated} 
+                  fullWidth 
+                />
+              )}
             </div>
           </div>
-        </header>
+        </div>
 
+        {/* Main content */}
         {isLicenseActive && (
           <ClientDashboard
             user={user}
@@ -327,18 +428,30 @@ function MainApp() {
         )}
       </div>
 
-      <div className="py-8 text-center text-sm text-neutral-500 bg-neutral-950 border-t border-neutral-800">
-        Powered by <span className="font-medium text-neutral-300">Bitora</span> · Un prodotto di{' '}
-        <a
-          href="https://bitora.it"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-400 hover:text-blue-300 font-medium"
-        >
-          Denis Cazzulo
-        </a>{' '}
-        (bitora.it)
-      </div>
+      {/* Newsletter Modal */}
+      <NewsletterModal
+        isOpen={isNewsletterModalOpen}
+        onClose={closeNewsletterModal}
+        onSend={handleSendNewsletter}
+        clientCount={rows.filter(r => r.email).length}
+        sending={sendingNewsletter}
+      />
+
+      {/* Footer */}
+      <footer className="py-6 text-center text-xs text-muted border-t border-border mt-8">
+        <p>
+          Powered by <span className="font-medium text-foreground">Cazzulo Denis</span>
+          {' · '}
+          <a
+            href="https://bitora.it"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline"
+          >
+            Bitora.it
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }

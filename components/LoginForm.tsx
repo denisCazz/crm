@@ -2,9 +2,14 @@
 import React, { useState } from "react";
 import { useSupabase } from "../lib/supabase";
 import { useToast } from "./Toaster";
-import { AnimatedBackground } from "./AnimatedBackground";
+import { ThemeToggle } from "./ThemeProvider";
 
-export default function LoginForm() {
+interface LoginFormProps {
+  brandName?: string;
+  logoUrl?: string | null;
+}
+
+export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFormProps) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [showPwd, setShowPwd] = useState(false);
@@ -42,26 +47,43 @@ export default function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex items-center justify-center p-4 relative overflow-hidden">
-      <AnimatedBackground />
+    <div className="min-h-screen bg-background gradient-mesh flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Theme toggle in corner */}
+      <div className="absolute top-4 right-4 z-30">
+        <ThemeToggle />
+      </div>
+
       <div className="w-full max-w-md relative z-20">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-white to-neutral-300 bg-clip-text text-transparent mb-2">
-            Bitora CRM
+          {logoUrl ? (
+            <img 
+              src={logoUrl} 
+              alt={brandName} 
+              className="h-16 w-16 mx-auto mb-4 rounded-2xl object-contain bg-surface shadow-theme-md"
+            />
+          ) : (
+            <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center shadow-theme-md">
+              <svg className="h-8 w-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+          )}
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
+            {brandName}
           </h1>
-          <p className="text-neutral-400 text-sm">
+          <p className="text-muted text-sm">
             Gestisci i tuoi clienti in modo semplice ed efficace
           </p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-3xl p-8 shadow-2xl">
+        <div className="card-elevated p-6 sm:p-8">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-center mb-2">
+            <h2 className="text-xl font-semibold text-center text-foreground mb-2">
               {authMode === "signin" ? "Bentornato" : "Crea il tuo account"}
             </h2>
-            <p className="text-neutral-400 text-sm text-center">
+            <p className="text-muted text-sm text-center">
               {authMode === "signin" 
                 ? "Accedi per continuare" 
                 : "Inizia subito a gestire i tuoi clienti"
@@ -72,7 +94,7 @@ export default function LoginForm() {
           <form onSubmit={handleAuth} className="space-y-5">
             {/* Email Field */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-neutral-300">
+              <label className="block text-sm font-medium text-foreground">
                 Indirizzo Email
               </label>
               <input
@@ -80,9 +102,7 @@ export default function LoginForm() {
                 required
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm 
-                         outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                         transition-all duration-200 placeholder-neutral-500"
+                className="input-field"
                 placeholder="mario.rossi@example.com"
                 autoComplete="email"
               />
@@ -90,7 +110,7 @@ export default function LoginForm() {
 
             {/* Password Field */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-neutral-300">
+              <label className="block text-sm font-medium text-foreground">
                 Password
               </label>
               <div className="relative">
@@ -99,23 +119,21 @@ export default function LoginForm() {
                   required
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 pr-12 text-sm 
-                           outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                           transition-all duration-200 placeholder-neutral-500"
+                  className="input-field pr-20"
                   placeholder={authMode === "signin" ? "La tua password" : "Crea una password sicura"}
                   autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPwd((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200 
-                           transition-colors duration-200 text-sm font-medium"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground 
+                           transition-colors duration-200 text-xs font-medium"
                 >
                   {showPwd ? "Nascondi" : "Mostra"}
                 </button>
               </div>
               {authMode === "signup" && (
-                <p className="text-xs text-neutral-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Usa almeno 8 caratteri con lettere e numeri
                 </p>
               )}
@@ -126,10 +144,7 @@ export default function LoginForm() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 
-                         text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 
-                         disabled:opacity-60 disabled:cursor-not-allowed transform hover:scale-[1.02] 
-                         active:scale-[0.98] shadow-lg hover:shadow-xl"
+                className="btn btn-primary w-full py-3"
               >
                 {submitting ? (
                   <div className="flex items-center justify-center gap-2">
@@ -143,8 +158,8 @@ export default function LoginForm() {
             </div>
 
             {/* Toggle Mode */}
-            <div className="pt-4 border-t border-neutral-800">
-              <p className="text-center text-sm text-neutral-400 mb-3">
+            <div className="pt-4 border-t border-border">
+              <p className="text-center text-sm text-muted mb-3">
                 {authMode === "signin" 
                   ? "Non hai ancora un account?" 
                   : "Hai già un account?"
@@ -153,9 +168,7 @@ export default function LoginForm() {
               <button
                 type="button"
                 onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
-                className="w-full bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-medium 
-                         py-2.5 px-4 rounded-xl transition-all duration-200 text-sm
-                         border border-neutral-700 hover:border-neutral-600"
+                className="btn btn-secondary w-full"
               >
                 {authMode === "signin" ? "Crea un nuovo account" : "Accedi al tuo account"}
               </button>
@@ -165,8 +178,11 @@ export default function LoginForm() {
 
         {/* Footer */}
         <div className="text-center mt-8">
-          <p className="text-xs text-neutral-500">
-            Powered by <span className="font-semibold">Bitora</span> · Un prodotto di <a href="https://bitora.it" target="_blank" rel="noopener noreferrer" className="underline hover:text-neutral-400">Denis Cazzulo</a> (bitora.it)
+          <p className="text-xs text-muted">
+            Powered by <span className="font-semibold text-foreground">Cazzulo Denis</span> · {' '}
+            <a href="https://bitora.it" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              Bitora.it
+            </a>
           </p>
         </div>
       </div>

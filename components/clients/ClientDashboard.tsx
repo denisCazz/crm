@@ -41,7 +41,7 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
       setError(null);
       const { data, error: queryError } = await supabase
         .from('clients')
-        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, lat, lon, created_at')
+        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, status, first_contacted_at, lat, lon, created_at')
         .eq('owner_id', user.id)
         .order('created_at', { ascending: false });
 
@@ -99,7 +99,12 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
   return (
     <section className="mt-4 sm:mt-8 space-y-6">
       {error && (
-        <div className="px-4 py-3 mb-3 text-sm text-red-400 bg-red-950/30 border border-red-900 rounded-xl">{error}</div>
+        <div className="card px-4 py-3 mb-3 text-sm text-danger bg-danger/10 border border-danger/20 flex items-center gap-3 animate-slide-down">
+          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          {error}
+        </div>
       )}
 
       <div className="sm:hidden">

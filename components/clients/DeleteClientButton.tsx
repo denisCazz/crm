@@ -57,12 +57,12 @@ export function DeleteClientButton({
         disabled={busy || disabled}
         className={
           className ??
-          'p-2 text-neutral-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors disabled:opacity-50'
+          'btn btn-ghost btn-icon text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50'
         }
         title={title}
       >
         {children ?? (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -72,7 +72,7 @@ export function DeleteClientButton({
           </svg>
         )}
       </button>
-      {err && <span className="text-xs text-red-400 px-2">{err}</span>}
+      {err && <span className="text-xs text-danger px-2">{err}</span>}
     </div>
   );
 }
