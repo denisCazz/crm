@@ -31,11 +31,30 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
         if (error) throw error;
         push("success", "Accesso effettuato con successo!");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: form.email,
           password: form.password,
         });
         if (error) throw error;
+        
+        // Crea automaticamente una licenza trial per il nuovo utente
+        if (data.user) {
+          try {
+            await fetch('/api/license', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: data.user.id,
+                plan: 'trial',
+                status: 'trial',
+              }),
+            });
+          } catch (licenseErr) {
+            console.error('Errore creazione licenza automatica:', licenseErr);
+            // Non bloccare la registrazione se la licenza fallisce
+          }
+        }
+        
         push("info", "Registrazione riuscita! Controlla l'email per confermare l'account.");
       }
     } catch (err: unknown) {

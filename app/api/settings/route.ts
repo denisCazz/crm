@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import { getServiceSupabaseClient } from '../../../lib/supabaseServer';
 import { encryptSecret } from '../../../lib/crypto';
 
+const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
+  .split(',')
+  .map((email) => email.trim().toLowerCase())
+  .filter((email) => email.length > 0);
+
 type SettingsUpdatePayload = {
+  target_owner_id?: string; // Admin può specificare un altro utente
   brand_name?: string | null;
   logo_url?: string | null;
   smtp_host?: string | null;
@@ -15,7 +21,7 @@ type SettingsUpdatePayload = {
   smtp_reply_to?: string | null;
 };
 
-async function getUserIdFromBearerToken(authHeader: string | null): Promise<string | null> {
+async function getUserFromBearerToken(authHeader: string | null): Promise<{ id: string; email: string | undefined } | null> {
   if (!authHeader) return null;
   const [kind, token] = authHeader.split(' ');
   if (kind?.toLowerCase() !== 'bearer' || !token) return null;
@@ -23,21 +29,26 @@ async function getUserIdFromBearerToken(authHeader: string | null): Promise<stri
   const supabase = getServiceSupabaseClient();
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user?.id) return null;
-  return data.user.id;
+  return { id: data.user.id, email: data.user.email };
+}
+
+function isAdmin(email: string | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase());
 }
 
 export async function GET(req: Request) {
   try {
-    const userId = await getUserIdFromBearerToken(req.headers.get('authorization'));
-    if (!userId) {
+    const currentUser = await getUserFromBearerToken(req.headers.get('authorization'));
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const supabase = getServiceSupabaseClient();
     const { data, error } = await supabase
       .from('app_settings')
-      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, created_at, updated_at')
-      .eq('owner_id', userId)
+      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at')
+      .eq('owner_id', currentUser.id)
       .maybeSingle();
 
     if (error) {
@@ -54,17 +65,26 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const userId = await getUserIdFromBearerToken(req.headers.get('authorization'));
-    if (!userId) {
+    const currentUser = await getUserFromBearerToken(req.headers.get('authorization'));
+    if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = (await req.json()) as SettingsUpdatePayload;
+    
+    // Determina l'owner_id target
+    let targetOwnerId = currentUser.id;
+    
+    // Se è specificato target_owner_id e l'utente è admin, usa quello
+    if (body.target_owner_id && body.target_owner_id !== currentUser.id) {
+      if (!isAdmin(currentUser.email)) {
+        return NextResponse.json({ error: 'Solo gli admin possono modificare le impostazioni di altri utenti' }, { status: 403 });
+      }
+      targetOwnerId = body.target_owner_id;
+    }
 
     const update: Record<string, unknown> = {
-      owner_id: userId,
-      brand_name: body.brand_name ?? null,
-      logo_url: body.logo_url ?? null,
+      owner_id: targetOwnerId,
       smtp_host: body.smtp_host ?? null,
       smtp_port: typeof body.smtp_port === 'number' ? body.smtp_port : null,
       smtp_secure: typeof body.smtp_secure === 'boolean' ? body.smtp_secure : null,
@@ -73,6 +93,13 @@ export async function POST(req: Request) {
       smtp_from_name: body.smtp_from_name ?? null,
       smtp_reply_to: body.smtp_reply_to ?? null,
     };
+
+    // brand_name e logo_url solo se non è una richiesta admin per altro utente
+    // (o se è per se stesso)
+    if (targetOwnerId === currentUser.id) {
+      update.brand_name = body.brand_name ?? null;
+      update.logo_url = body.logo_url ?? null;
+    }
 
     if (typeof body.smtp_password === 'string') {
       const trimmed = body.smtp_password.trim();
@@ -88,7 +115,7 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from('app_settings')
       .upsert(update, { onConflict: 'owner_id' })
-      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, created_at, updated_at')
+      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at')
       .single();
 
     if (error) {

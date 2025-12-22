@@ -379,6 +379,7 @@ function MainApp() {
         user={user}
         brandName={brandName}
         logoUrl={logoUrl}
+        isAdmin={isAdminUser(user)}
         onLogout={handleLogout}
         onNewClient={handleNewClient}
         onNewsletter={openNewsletterModal}

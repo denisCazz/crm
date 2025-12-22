@@ -9,6 +9,7 @@ interface NavbarProps {
   user: User;
   brandName?: string;
   logoUrl?: string | null;
+  isAdmin?: boolean;
   onLogout: () => Promise<void>;
   onNewClient: () => void;
   onNewsletter: () => void;
@@ -25,6 +26,7 @@ export function Navbar({
   user,
   brandName = 'Bitora CRM',
   logoUrl,
+  isAdmin = false,
   onLogout,
   onNewClient,
   onNewsletter,

@@ -50,6 +50,8 @@ export interface AppSettings {
   smtp_from_email: string | null;
   smtp_from_name: string | null;
   smtp_reply_to: string | null;
+  // API Key per integrazione esterna (lead capture)
+  api_key: string | null;
   created_at: string;
   updated_at: string;
 }
