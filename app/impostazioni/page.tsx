@@ -7,6 +7,7 @@ import { User } from '@supabase/supabase-js';
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
 import { useSupabaseSafe } from '../../lib/supabase';
+import { useTheme } from '../../components/ThemeProvider';
 import type { AppSettings, EmailTemplate, License } from '../../types';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
@@ -59,6 +60,44 @@ function isLicenseValid(data: License | null): { ok: true } | { ok: false; reaso
   }
 
   return { ok: true };
+}
+
+function ThemeSection() {
+  const { theme, setTheme } = useTheme();
+  
+  const themes = [
+    { value: 'light', label: 'Chiaro', icon: '☀️' },
+    { value: 'dark', label: 'Scuro', icon: '🌙' },
+    { value: 'system', label: 'Sistema', icon: '💻' },
+  ] as const;
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
+      <h2 className="text-lg font-semibold text-foreground">Tema</h2>
+      <p className="text-sm text-muted">Scegli la modalità di visualizzazione preferita</p>
+      <div className="flex flex-wrap gap-3">
+        {themes.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTheme(t.value)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-200 ${
+              theme === t.value
+                ? 'border-purple-500 bg-purple-500/20 text-foreground'
+                : 'border-border bg-surface-hover text-muted hover:border-border-hover hover:bg-surface-active'
+            }`}
+          >
+            <span className="text-lg">{t.icon}</span>
+            <span className="font-medium">{t.label}</span>
+            {theme === t.value && (
+              <svg className="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            )}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function SettingsApp() {
@@ -320,8 +359,8 @@ function SettingsApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -332,19 +371,19 @@ function SettingsApp() {
 
   if (licenseState.status === 'checking' || licenseState.status === 'idle') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center gap-4 text-neutral-300">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
-        <p className="text-sm text-neutral-400">Verifica della licenza in corso…</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted">Verifica della licenza in corso…</p>
       </div>
     );
   }
 
   if (licenseState.status === 'error') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
-        <div className="rounded-3xl border border-red-900/80 bg-red-950/40 px-6 py-8 max-w-md space-y-4">
-          <h2 className="text-xl font-semibold text-red-100">Impossibile verificare la licenza</h2>
-          <p className="text-sm text-red-200/80">{licenseState.message}</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center text-foreground">
+        <div className="rounded-3xl border border-red-500/40 bg-red-500/10 px-6 py-8 max-w-md space-y-4">
+          <h2 className="text-xl font-semibold text-red-600 dark:text-red-400">Impossibile verificare la licenza</h2>
+          <p className="text-sm text-red-600/80 dark:text-red-300/80">{licenseState.message}</p>
         </div>
       </div>
     );
@@ -352,13 +391,13 @@ function SettingsApp() {
 
   if (licenseState.status === 'inactive') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center text-foreground">
         <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 px-6 py-8 max-w-md space-y-4">
-          <h2 className="text-xl font-semibold text-neutral-50">Licenza richiesta</h2>
-          <p className="text-sm text-neutral-300">{licenseState.reason}</p>
+          <h2 className="text-xl font-semibold text-foreground">Licenza richiesta</h2>
+          <p className="text-sm text-muted">{licenseState.reason}</p>
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-xl border border-neutral-700/60 bg-neutral-900/70 px-4 py-2.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-800"
+            className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-surface-hover"
           >
             Torna alla dashboard
           </Link>
@@ -368,91 +407,93 @@ function SettingsApp() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+    <div className="min-h-screen bg-background text-foreground antialiased">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">Impostazioni</h1>
-            <p className="text-sm text-neutral-400">Brand, SMTP e template email marketing.</p>
+            <h1 className="text-2xl font-semibold text-foreground">Impostazioni</h1>
+            <p className="text-sm text-muted">Brand, SMTP e template email marketing.</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Dashboard
             </Link>
             <Link
               href="/email"
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Invia email
             </Link>
           </div>
         </header>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Brand</h2>
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Brand</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Nome brand</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Nome brand</span>
               <input
                 value={String(settings.brand_name ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, brand_name: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Logo URL</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Logo URL</span>
               <input
                 value={String(settings.logo_url ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, logo_url: e.target.value }))}
                 placeholder="https://..."
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
-          <h2 className="text-lg font-semibold">SMTP (invio email)</h2>
+        <ThemeSection />
+
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">SMTP (invio email)</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Host</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Host</span>
               <input
                 value={String(settings.smtp_host ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_host: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Porta</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Porta</span>
               <input
                 type="number"
                 value={Number(settings.smtp_port ?? 587)}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_port: Number(e.target.value) }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Username</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Username</span>
               <input
                 value={String(settings.smtp_user ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_user: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Password (solo per aggiornare)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Password (solo per aggiornare)</span>
               <input
                 type="password"
                 value={smtpPassword}
                 onChange={(e) => setSmtpPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
-            <label className="flex items-center gap-3 rounded-xl border border-neutral-800/70 bg-neutral-900/50 px-3.5 py-2.5 text-sm text-neutral-200">
+            <label className="flex items-center gap-3 rounded-xl border border-border bg-surface/50 px-3.5 py-2.5 text-sm text-foreground">
               <input
                 type="checkbox"
                 checked={Boolean(settings.smtp_secure)}
@@ -464,27 +505,27 @@ function SettingsApp() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">From email</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">From email</span>
               <input
                 value={String(settings.smtp_from_email ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_from_email: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">From name</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">From name</span>
               <input
                 value={String(settings.smtp_from_name ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_from_name: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Reply-To</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Reply-To</span>
               <input
                 value={String(settings.smtp_reply_to ?? '')}
                 onChange={(e) => setSettings((s) => ({ ...s, smtp_reply_to: e.target.value }))}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               />
             </label>
           </div>
@@ -494,63 +535,63 @@ function SettingsApp() {
               type="button"
               disabled={settingsSaving}
               onClick={handleSaveSettings}
-              className="inline-flex items-center justify-center rounded-xl bg-white/90 px-4 py-2.5 text-sm font-semibold text-black hover:bg-white disabled:opacity-70"
+              className="btn btn-primary"
             >
               {settingsSaving ? 'Salvataggio…' : 'Salva impostazioni'}
             </button>
           </div>
 
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-muted">
             Placeholder supportati nei template: {'{{first_name}}'}, {'{{last_name}}'}, {'{{full_name}}'}, {'{{email}}'}, {'{{phone}}'}.
           </p>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Template email</h2>
+            <h2 className="text-lg font-semibold text-foreground">Template email</h2>
             <button
               type="button"
               onClick={() => setTemplateForm({ id: '', name: '', subject: '', body_html: '', body_text: '' })}
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Nuovo template
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-neutral-800/60">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-900/70 text-neutral-300">
+              <thead className="bg-surface-hover text-muted">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Nome</th>
                   <th className="px-4 py-3 text-left font-semibold">Subject</th>
                   <th className="px-4 py-3 text-right font-semibold">Azioni</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-800/60">
+              <tbody className="divide-y divide-border">
                 {templates.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-4 text-neutral-400" colSpan={3}>
+                    <td className="px-4 py-4 text-muted" colSpan={3}>
                       Nessun template ancora.
                     </td>
                   </tr>
                 ) : (
                   templates.map((tpl) => (
-                    <tr key={tpl.id} className="bg-neutral-950/40">
-                      <td className="px-4 py-3 text-neutral-100">{tpl.name}</td>
-                      <td className="px-4 py-3 text-neutral-300 truncate max-w-[420px]">{tpl.subject}</td>
+                    <tr key={tpl.id} className="bg-surface/40">
+                      <td className="px-4 py-3 text-foreground">{tpl.name}</td>
+                      <td className="px-4 py-3 text-muted truncate max-w-[420px]">{tpl.subject}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => handleEditTemplate(tpl)}
-                            className="rounded-lg border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-xs text-neutral-200 hover:bg-neutral-800"
+                            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground hover:bg-surface-hover"
                           >
                             Modifica
                           </button>
                           <button
                             type="button"
                             onClick={() => void handleDeleteTemplate(tpl)}
-                            className="rounded-lg border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-200 hover:bg-red-950/50"
+                            className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-500/20"
                           >
                             Elimina
                           </button>
@@ -563,44 +604,44 @@ function SettingsApp() {
             </table>
           </div>
 
-          <div className="rounded-xl border border-neutral-800/60 bg-neutral-950/40 p-4 space-y-3">
+          <div className="rounded-xl border border-border bg-surface/40 p-4 space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Nome</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted">Nome</span>
                 <input
                   value={templateForm.name}
                   onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
                 />
               </label>
               <label className="flex flex-col gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Subject</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted">Subject</span>
                 <input
                   value={templateForm.subject}
                   onChange={(e) => setTemplateForm((f) => ({ ...f, subject: e.target.value }))}
-                  className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
                 />
               </label>
             </div>
 
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Body HTML</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Body HTML</span>
               <textarea
                 value={templateForm.body_html}
                 onChange={(e) => setTemplateForm((f) => ({ ...f, body_html: e.target.value }))}
                 rows={8}
-                className="w-full rounded-2xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-3 text-sm text-neutral-100"
+                className="w-full rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm text-foreground"
                 placeholder="<h1>Ciao {{first_name}}</h1>"
               />
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Body testo (opzionale)</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Body testo (opzionale)</span>
               <textarea
                 value={templateForm.body_text}
                 onChange={(e) => setTemplateForm((f) => ({ ...f, body_text: e.target.value }))}
                 rows={4}
-                className="w-full rounded-2xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-3 text-sm text-neutral-100"
+                className="w-full rounded-2xl border border-border bg-surface px-3.5 py-3 text-sm text-foreground"
               />
             </label>
 
@@ -609,7 +650,7 @@ function SettingsApp() {
                 type="button"
                 disabled={templateSaving}
                 onClick={() => setTemplateForm({ id: '', name: '', subject: '', body_html: '', body_text: '' })}
-                className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90 disabled:opacity-70"
+                className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover disabled:opacity-70"
               >
                 Reset
               </button>
@@ -617,7 +658,7 @@ function SettingsApp() {
                 type="button"
                 disabled={templateSaving}
                 onClick={() => void handleSaveTemplate()}
-                className="inline-flex items-center justify-center rounded-xl bg-white/90 px-4 py-2.5 text-sm font-semibold text-black hover:bg-white disabled:opacity-70"
+                className="btn btn-primary disabled:opacity-70"
               >
                 {templateSaving ? 'Salvataggio…' : templateForm.id ? 'Aggiorna template' : 'Crea template'}
               </button>

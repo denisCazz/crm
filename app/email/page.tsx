@@ -257,8 +257,8 @@ function EmailApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -269,19 +269,19 @@ function EmailApp() {
 
   if (licenseState.status === 'checking' || licenseState.status === 'idle') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center gap-4 text-neutral-300">
-        <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500 border-t-transparent" />
-        <p className="text-sm text-neutral-400">Verifica della licenza in corso…</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4 text-foreground">
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted">Verifica della licenza in corso…</p>
       </div>
     );
   }
 
   if (licenseState.status === 'error') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
-        <div className="rounded-3xl border border-red-900/80 bg-red-950/40 px-6 py-8 max-w-md space-y-4">
-          <h2 className="text-xl font-semibold text-red-100">Impossibile verificare la licenza</h2>
-          <p className="text-sm text-red-200/80">{licenseState.message}</p>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center text-foreground">
+        <div className="rounded-3xl border border-red-500/40 bg-red-500/10 px-6 py-8 max-w-md space-y-4">
+          <h2 className="text-xl font-semibold text-red-600 dark:text-red-400">Impossibile verificare la licenza</h2>
+          <p className="text-sm text-red-600/80 dark:text-red-300/80">{licenseState.message}</p>
         </div>
       </div>
     );
@@ -289,13 +289,13 @@ function EmailApp() {
 
   if (licenseState.status === 'inactive') {
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center px-6 text-center text-neutral-200">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6 text-center text-foreground">
         <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 px-6 py-8 max-w-md space-y-4">
-          <h2 className="text-xl font-semibold text-neutral-50">Licenza richiesta</h2>
-          <p className="text-sm text-neutral-300">{licenseState.reason}</p>
+          <h2 className="text-xl font-semibold text-foreground">Licenza richiesta</h2>
+          <p className="text-sm text-muted">{licenseState.reason}</p>
           <Link
             href="/"
-            className="inline-flex items-center justify-center rounded-xl border border-neutral-700/60 bg-neutral-900/70 px-4 py-2.5 text-sm font-semibold text-neutral-200 transition hover:bg-neutral-800"
+            className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-semibold text-foreground transition hover:bg-surface-hover"
           >
             Torna alla dashboard
           </Link>
@@ -305,37 +305,37 @@ function EmailApp() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 antialiased">
+    <div className="min-h-screen bg-background text-foreground antialiased">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold">Invio email</h1>
-            <p className="text-sm text-neutral-400">Scegli un cliente e un template, poi invia via SMTP.</p>
+            <h1 className="text-2xl font-semibold text-foreground">Invio email</h1>
+            <p className="text-sm text-muted">Scegli un cliente e un template, poi invia via SMTP.</p>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Dashboard
             </Link>
             <Link
               href="/impostazioni"
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2.5 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Impostazioni
             </Link>
           </div>
         </header>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Cliente</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Cliente</span>
               <select
                 value={selectedClientId}
                 onChange={(e) => setSelectedClientId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               >
                 <option value="">Seleziona…</option>
                 {clients.map((c) => (
@@ -348,11 +348,11 @@ function EmailApp() {
             </label>
 
             <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Template</span>
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Template</span>
               <select
                 value={selectedTemplateId}
                 onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="w-full rounded-xl border border-neutral-800/70 bg-neutral-900/70 px-3.5 py-2.5 text-sm text-neutral-100"
+                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
               >
                 <option value="">Seleziona…</option>
                 {templates.map((t) => (
@@ -365,32 +365,32 @@ function EmailApp() {
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-neutral-500">L&apos;invio viene tracciato in Supabase (tabella email_sends).</p>
+            <p className="text-xs text-muted">L&apos;invio viene tracciato in Supabase (tabella email_sends).</p>
             <button
               type="button"
               disabled={sending}
               onClick={() => void handleSend()}
-              className="inline-flex items-center justify-center rounded-xl bg-white/90 px-4 py-2.5 text-sm font-semibold text-black hover:bg-white disabled:opacity-70"
+              className="btn btn-primary disabled:opacity-70"
             >
               {sending ? 'Invio…' : 'Invia email'}
             </button>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
-          <h2 className="text-lg font-semibold">Anteprima</h2>
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">Anteprima</h2>
           {!preview ? (
-            <p className="text-sm text-neutral-400">Seleziona cliente e template per vedere l&apos;anteprima.</p>
+            <p className="text-sm text-muted">Seleziona cliente e template per vedere l&apos;anteprima.</p>
           ) : (
             <div className="space-y-3">
-              <div className="rounded-xl border border-neutral-800/60 bg-neutral-950/40 p-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Subject</div>
-                <div className="mt-1 text-sm text-neutral-100">{preview.subject}</div>
+              <div className="rounded-xl border border-border bg-surface/40 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">Subject</div>
+                <div className="mt-1 text-sm text-foreground">{preview.subject}</div>
               </div>
-              <div className="rounded-xl border border-neutral-800/60 bg-neutral-950/40 p-4">
-                <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">HTML</div>
+              <div className="rounded-xl border border-border bg-surface/40 p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted">HTML</div>
                 <div
-                  className="mt-3 prose prose-invert max-w-none"
+                  className="mt-3 prose prose-neutral dark:prose-invert max-w-none"
                   dangerouslySetInnerHTML={{ __html: preview.html }}
                 />
               </div>
@@ -398,21 +398,21 @@ function EmailApp() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-neutral-800/60 bg-neutral-950/60 p-5 sm:p-6 space-y-4">
+        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Invii recenti</h2>
+            <h2 className="text-lg font-semibold text-foreground">Invii recenti</h2>
             <button
               type="button"
               onClick={() => void loadData()}
-              className="inline-flex items-center justify-center rounded-xl border border-neutral-700 bg-neutral-900/80 px-4 py-2 text-sm font-medium text-neutral-200 transition hover:bg-neutral-800/90"
+              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-hover"
             >
               Aggiorna
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-neutral-800/60">
+          <div className="overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-900/70 text-neutral-300">
+              <thead className="bg-surface-hover text-muted">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold">Data</th>
                   <th className="px-4 py-3 text-left font-semibold">A</th>
@@ -420,27 +420,27 @@ function EmailApp() {
                   <th className="px-4 py-3 text-left font-semibold">Stato</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-800/60">
+              <tbody className="divide-y divide-border">
                 {sends.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-4 text-neutral-400" colSpan={4}>
+                    <td className="px-4 py-4 text-muted" colSpan={4}>
                       Nessun invio ancora.
                     </td>
                   </tr>
                 ) : (
                   sends.map((s) => (
-                    <tr key={s.id} className="bg-neutral-950/40">
-                      <td className="px-4 py-3 text-neutral-300">{new Date(s.created_at).toLocaleString('it-IT')}</td>
-                      <td className="px-4 py-3 text-neutral-100">{s.to_email}</td>
-                      <td className="px-4 py-3 text-neutral-300 truncate max-w-[420px]">{s.subject}</td>
+                    <tr key={s.id} className="bg-surface/40">
+                      <td className="px-4 py-3 text-muted">{new Date(s.created_at).toLocaleString('it-IT')}</td>
+                      <td className="px-4 py-3 text-foreground">{s.to_email}</td>
+                      <td className="px-4 py-3 text-muted truncate max-w-[420px]">{s.subject}</td>
                       <td className="px-4 py-3">
                         <span
                           className={
                             s.status === 'sent'
-                              ? 'inline-flex rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-200'
+                              ? 'inline-flex rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400'
                               : s.status === 'failed'
-                                ? 'inline-flex rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-200'
-                                : 'inline-flex rounded-full bg-neutral-500/15 px-2.5 py-1 text-xs font-semibold text-neutral-200'
+                                ? 'inline-flex rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-semibold text-red-600 dark:text-red-400'
+                                : 'inline-flex rounded-full bg-neutral-500/15 px-2.5 py-1 text-xs font-semibold text-muted'
                           }
                           title={s.error ?? undefined}
                         >
