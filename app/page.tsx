@@ -108,7 +108,7 @@ function MainApp() {
 
       push("success", data.message || `Newsletter inviata a ${data.recipients_count} destinatari!`);
       setIsNewsletterModalOpen(false);
-    } catch (err) {
+    } catch (_err) {
       push("error", "Errore di connessione. Riprova più tardi.");
     } finally {
       setSendingNewsletter(false);
@@ -379,7 +379,6 @@ function MainApp() {
         user={user}
         brandName={brandName}
         logoUrl={logoUrl}
-        isAdmin={isAdminUser(user)}
         onLogout={handleLogout}
         onNewClient={handleNewClient}
         onNewsletter={openNewsletterModal}

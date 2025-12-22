@@ -583,7 +583,7 @@ function SettingsApp() {
     
     setCreatingNewLicense(true);
     try {
-      let userId = newLicenseUserId.trim();
+      const userId = newLicenseUserId.trim();
       const email = newLicenseEmail.trim();
       
       // Se non abbiamo l'ID, proviamo a cercarlo via email nelle licenze esistenti

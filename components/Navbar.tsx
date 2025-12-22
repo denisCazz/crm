@@ -9,7 +9,6 @@ interface NavbarProps {
   user: User;
   brandName?: string;
   logoUrl?: string | null;
-  isAdmin?: boolean;
   onLogout: () => Promise<void>;
   onNewClient: () => void;
   onNewsletter: () => void;
@@ -26,7 +25,7 @@ export function Navbar({
   user,
   brandName = 'Bitora CRM',
   logoUrl,
-  isAdmin = false,
+  // isAdmin prop removed - no longer needed since settings visible to all users
   onLogout,
   onNewClient,
   onNewsletter,
