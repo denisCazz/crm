@@ -17,6 +17,27 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
   const { push } = useToast();
   const supabase = useSupabase();
 
+  async function handleForgotPassword() {
+    const email = form.email.trim();
+    if (!email) {
+      push("error", "Inserisci prima la tua email.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+      push("success", "Email di recupero inviata. Controlla la posta.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      push("error", errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleAuth(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
@@ -80,6 +101,9 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
               src={logoUrl} 
               alt={brandName} 
               className="h-16 w-16 mx-auto mb-4 rounded-2xl object-contain bg-surface shadow-theme-md"
+              decoding="async"
+              loading="eager"
+              fetchPriority="high"
             />
           ) : (
             <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center shadow-theme-md">
@@ -156,6 +180,19 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
                   Usa almeno 8 caratteri con lettere e numeri
                 </p>
               )}
+
+              {authMode === "signin" && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={submitting}
+                    className="text-xs font-medium text-primary hover:underline disabled:opacity-60"
+                  >
+                    Password dimenticata?
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Submit Button */}
@@ -202,6 +239,10 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
             <a href="https://bitora.it" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
               Bitora.it
             </a>
+            {' · '}
+            <a href="/privacy" className="text-primary hover:underline">Privacy</a>
+            {' · '}
+            <a href="/cookie" className="text-primary hover:underline">Cookie</a>
           </p>
         </div>
       </div>

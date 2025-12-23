@@ -31,9 +31,25 @@ function ContattiInner({ userId }: { userId: string }) {
   const [notesDraft, setNotesDraft] = useState<Record<string, string>>({});
   const [savingNotes, setSavingNotes] = useState<Record<string, boolean>>({});
 
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
+
+  const [filterQuery, setFilterQuery] = useState('');
+
+  const filteredClients = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return clients;
+
+    return clients.filter((c) => {
+      const fullName = [c.first_name ?? '', c.last_name ?? ''].join(' ').trim();
+      const tags = Array.isArray(c.tags) ? c.tags.join(' ') : '';
+      const haystack = [fullName, c.email ?? '', c.phone ?? '', tags].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [clients, filterQuery]);
+
   const eligibleClientIds = useMemo(
-    () => clients.filter((c) => (c.email ?? '').trim().length > 0).map((c) => c.id),
-    [clients]
+    () => filteredClients.filter((c) => (c.email ?? '').trim().length > 0).map((c) => c.id),
+    [filteredClients]
   );
 
   const allSelected = useMemo(() => {
@@ -219,6 +235,37 @@ function ContattiInner({ userId }: { userId: string }) {
     [supabase, clients, notesDraft, userId, push]
   );
 
+  const detailClient = useMemo(() => {
+    if (!detailClientId) return null;
+    return clients.find((c) => c.id === detailClientId) ?? null;
+  }, [detailClientId, clients]);
+
+  const detailNotesValue = useMemo(() => {
+    if (!detailClient) return '';
+    const draft = notesDraft[detailClient.id];
+    return typeof draft === 'string' ? draft : detailClient.notes ?? '';
+  }, [detailClient, notesDraft]);
+
+  const detailIsDirty = useMemo(() => {
+    if (!detailClient) return false;
+    const draft = notesDraft[detailClient.id];
+    if (typeof draft !== 'string') return false;
+    return draft.trim() !== (detailClient.notes ?? '').trim();
+  }, [detailClient, notesDraft]);
+
+  const openDetails = useCallback(
+    (clientId: string) => {
+      const client = clients.find((c) => c.id === clientId);
+      if (!client) return;
+      setNotesDraft((prev) => {
+        if (typeof prev[clientId] === 'string') return prev;
+        return { ...prev, [clientId]: client.notes ?? '' };
+      });
+      setDetailClientId(clientId);
+    },
+    [clients]
+  );
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
       <header className="space-y-2">
@@ -302,7 +349,7 @@ function ContattiInner({ userId }: { userId: string }) {
             Selezionati: {selectedCount}
           </span>
           <span className="inline-flex items-center rounded-full bg-surface-hover px-3 py-1 text-xs font-semibold text-muted">
-            Contatti: {clients.length}
+            Contatti: {filteredClients.length}
           </span>
           <span className="inline-flex items-center rounded-full bg-surface-hover px-3 py-1 text-xs font-semibold text-muted">
             Con email: {eligibleClientIds.length}
@@ -316,11 +363,87 @@ function ContattiInner({ userId }: { userId: string }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-foreground">Contatti</h2>
-              <p className="text-sm text-muted">Seleziona i contatti e gestisci le note.</p>
+              <p className="text-sm text-muted">Seleziona i contatti. Le note sono in “Dettagli”.</p>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex-1">
+              <label className="sr-only" htmlFor="contacts-filter">Cerca contatti</label>
+              <div className="relative">
+                <input
+                  id="contacts-filter"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 pr-10 text-sm text-foreground"
+                  placeholder="Cerca per nome, email, telefono, tag…"
+                />
+                {filterQuery.trim().length ? (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-muted hover:text-foreground"
+                    onClick={() => setFilterQuery('')}
+                    aria-label="Pulisci filtro"
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="md:hidden space-y-3">
+            {filteredClients.length === 0 ? (
+              <div className="rounded-xl border border-border bg-surface/40 p-4 text-sm text-muted">Nessun contatto.</div>
+            ) : (
+              filteredClients.map((c) => {
+                const hasEmail = (c.email ?? '').trim().length > 0;
+                const checked = selectedClientIds.includes(c.id);
+
+                return (
+                  <div
+                    key={c.id}
+                    className={`rounded-2xl border border-border p-4 ${hasEmail ? 'bg-surface/40' : 'bg-surface/20 opacity-80'}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <label className="inline-flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!hasEmail}
+                          onChange={(e) => toggleClient(c.id, e.target.checked)}
+                          className="mt-1 h-4 w-4 disabled:opacity-50"
+                          aria-label={`Seleziona ${c.email ?? c.id}`}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-foreground font-medium truncate">
+                            {[c.first_name, c.last_name].filter(Boolean).join(' ') || '—'}
+                            {c.status === 'new' ? (
+                              <span className="ml-2 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                                nuovo
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-xs text-muted break-words">
+                            {c.email ? c.email : 'Nessuna email'}
+                            {c.phone ? <span className="text-muted"> · {c.phone}</span> : null}
+                          </div>
+                          {!hasEmail ? <div className="mt-2 text-xs text-muted">Email mancante</div> : null}
+                        </div>
+                      </label>
+                      <button type="button" className="btn btn-secondary" onClick={() => openDetails(c.id)}>
+                        Dettagli
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full text-sm">
               <thead className="bg-surface-hover text-muted">
                 <tr>
@@ -337,25 +460,20 @@ function ContattiInner({ userId }: { userId: string }) {
                     </label>
                   </th>
                   <th className="px-4 py-3 text-left font-semibold">Contatto</th>
-                  <th className="px-4 py-3 text-left font-semibold">Note</th>
-                  <th className="px-4 py-3 text-left font-semibold w-[120px]">Azioni</th>
+                  <th className="px-4 py-3 text-left font-semibold w-[140px]">Azioni</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {clients.length === 0 ? (
+                {filteredClients.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-6 text-muted" colSpan={4}>
+                    <td className="px-4 py-6 text-muted" colSpan={3}>
                       Nessun contatto.
                     </td>
                   </tr>
                 ) : (
-                  clients.map((c) => {
+                  filteredClients.map((c) => {
                     const hasEmail = (c.email ?? '').trim().length > 0;
                     const checked = selectedClientIds.includes(c.id);
-                    const draft = notesDraft[c.id];
-                    const notesValue = typeof draft === 'string' ? draft : c.notes ?? '';
-                    const isDirty = typeof draft === 'string' && draft.trim() !== (c.notes ?? '').trim();
-                    const isSaving = Boolean(savingNotes[c.id]);
 
                     return (
                       <tr key={c.id} className={`align-top ${hasEmail ? 'bg-surface/40' : 'bg-surface/20 opacity-80'}`}>
@@ -383,27 +501,13 @@ function ContattiInner({ userId }: { userId: string }) {
                               {c.email ? c.email : 'Nessuna email'}
                               {c.phone ? <span className="text-muted"> · {c.phone}</span> : null}
                             </div>
+                            {!hasEmail ? <div className="text-xs text-muted">Email mancante</div> : null}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <textarea
-                            value={notesValue}
-                            onChange={(e) => setNotesDraft((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                            rows={2}
-                            className="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground"
-                            placeholder="Aggiungi note…"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            className="btn btn-secondary w-full disabled:opacity-60"
-                            disabled={!isDirty || isSaving}
-                            onClick={() => void handleSaveNotes(c.id)}
-                          >
-                            {isSaving ? 'Salvo…' : 'Salva'}
+                          <button type="button" className="btn btn-secondary w-full" onClick={() => openDetails(c.id)}>
+                            Dettagli
                           </button>
-                          {!hasEmail ? <p className="mt-2 text-xs text-muted">Email mancante</p> : null}
                         </td>
                       </tr>
                     );
@@ -443,6 +547,70 @@ function ContattiInner({ userId }: { userId: string }) {
           )}
         </aside>
       </div>
+
+      {/* Details modal (Notes only here) */}
+      {detailClient ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDetailClientId(null)}
+        >
+          <div
+            className="modal-content w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-surface border-b border-border px-4 sm:px-6 py-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold text-foreground truncate">
+                  {[detailClient.first_name, detailClient.last_name].filter(Boolean).join(' ') || 'Dettagli'}
+                </h3>
+                <p className="text-sm text-muted truncate">
+                  {detailClient.email ? detailClient.email : 'Nessuna email'}
+                  {detailClient.phone ? ` · ${detailClient.phone}` : ''}
+                </p>
+              </div>
+              <button type="button" className="btn btn-ghost btn-icon" onClick={() => setDetailClientId(null)} aria-label="Chiudi">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-4">
+              <div className="card p-4">
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Note</div>
+                <textarea
+                  value={detailNotesValue}
+                  onChange={(e) =>
+                    setNotesDraft((prev) => ({
+                      ...prev,
+                      [detailClient.id]: e.target.value,
+                    }))
+                  }
+                  rows={6}
+                  className="input-field resize-none"
+                  placeholder="Aggiungi note…"
+                />
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-surface border-t border-border px-4 sm:px-6 py-4 flex items-center justify-end gap-3">
+              <button type="button" className="btn btn-secondary" onClick={() => setDetailClientId(null)}>
+                Chiudi
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary disabled:opacity-60"
+                disabled={!detailIsDirty || Boolean(savingNotes[detailClient.id])}
+                onClick={() => void handleSaveNotes(detailClient.id)}
+              >
+                {savingNotes[detailClient.id] ? 'Salvo…' : 'Salva note'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </div>
   );

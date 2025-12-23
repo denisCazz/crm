@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 import { ThemeToggle } from '../ThemeProvider';
+import { getCachedBrand } from '../../lib/brandCache';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -25,6 +26,29 @@ export function AppLayout({ children, user, brandName = 'Bitora CRM', logoUrl, o
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  const [resolvedBrandName, setResolvedBrandName] = React.useState(brandName);
+  const [resolvedLogoUrl, setResolvedLogoUrl] = React.useState<string | null | undefined>(logoUrl);
+
+  React.useEffect(() => {
+    // Cache-first: show brand/logo immediately without network calls.
+    if (!user?.id) return;
+
+    const cached = getCachedBrand(user.id);
+    if (!cached) return;
+
+    if (!brandName || brandName === 'Bitora CRM') {
+      if (cached.brand_name) setResolvedBrandName(cached.brand_name);
+    } else {
+      setResolvedBrandName(brandName);
+    }
+
+    if (!logoUrl) {
+      if (cached.logo_url) setResolvedLogoUrl(cached.logo_url);
+    } else {
+      setResolvedLogoUrl(logoUrl);
+    }
+  }, [user?.id, brandName, logoUrl]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navbar */}
@@ -33,8 +57,15 @@ export function AppLayout({ children, user, brandName = 'Bitora CRM', logoUrl, o
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              {logoUrl ? (
-                <img src={logoUrl} alt={brandName} className="h-9 w-9 rounded-xl object-contain bg-surface" />
+              {resolvedLogoUrl ? (
+                <img
+                  src={resolvedLogoUrl}
+                  alt={resolvedBrandName}
+                  className="h-9 w-9 rounded-xl object-contain bg-surface"
+                  decoding="async"
+                  loading="eager"
+                  fetchPriority="high"
+                />
               ) : (
                 <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
                   <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -43,7 +74,7 @@ export function AppLayout({ children, user, brandName = 'Bitora CRM', logoUrl, o
                 </div>
               )}
               <div className="hidden sm:block">
-                <h1 className="text-lg font-bold text-foreground">{brandName}</h1>
+                <h1 className="text-lg font-bold text-foreground">{resolvedBrandName}</h1>
                 <p className="text-[10px] text-muted -mt-0.5">Dashboard CRM</p>
               </div>
             </Link>
@@ -164,9 +195,11 @@ export function AppLayout({ children, user, brandName = 'Bitora CRM', logoUrl, o
 
       {/* Footer */}
       <footer className="py-6 text-center text-xs text-muted border-t border-border mt-auto">
-        <p>
-          Powered by <span className="font-medium text-foreground">Cazzulo Denis</span>
-          {' · '}
+        <p className="space-x-2">
+          <span>
+            Powered by <span className="font-medium text-foreground">Cazzulo Denis</span>
+          </span>
+          <span aria-hidden>·</span>
           <a
             href="https://bitora.it"
             target="_blank"
@@ -175,6 +208,14 @@ export function AppLayout({ children, user, brandName = 'Bitora CRM', logoUrl, o
           >
             Bitora.it
           </a>
+          <span aria-hidden>·</span>
+          <Link href="/privacy" className="text-primary hover:underline">
+            Privacy
+          </Link>
+          <span aria-hidden>·</span>
+          <Link href="/cookie" className="text-primary hover:underline">
+            Cookie
+          </Link>
         </p>
       </footer>
     </div>
