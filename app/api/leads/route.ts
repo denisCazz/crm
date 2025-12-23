@@ -45,6 +45,19 @@ export async function POST(request: Request) {
       .eq('api_key', apiKey)
       .single();
 
+    if (settingsError) {
+      const msg = settingsError.message ?? String(settingsError);
+      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
+        return NextResponse.json(
+          {
+            error:
+              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
+          },
+          { status: 500, headers: corsHeaders() }
+        );
+      }
+    }
+
     if (settingsError || !settings) {
       return NextResponse.json(
         { error: 'API key non valida' },

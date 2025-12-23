@@ -31,9 +31,26 @@ export async function POST(req: Request) {
   let sendId: string | null = null;
 
   try {
-    const userId = await getUserIdFromBearerToken(req.headers.get('authorization'));
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+
+    const userId = await getUserIdFromBearerToken(authHeader);
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid or expired token' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
     }
 
     const body = (await req.json()) as SendEmailPayload;

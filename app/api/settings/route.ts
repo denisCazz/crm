@@ -39,9 +39,26 @@ function isAdmin(email: string | undefined): boolean {
 
 export async function GET(req: Request) {
   try {
-    const currentUser = await getUserFromBearerToken(req.headers.get('authorization'));
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+
+    const currentUser = await getUserFromBearerToken(authHeader);
     if (!currentUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid or expired token' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
     }
 
     const supabase = getServiceSupabaseClient();
@@ -52,6 +69,16 @@ export async function GET(req: Request) {
       .maybeSingle();
 
     if (error) {
+      const msg = error.message ?? String(error);
+      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
+        return NextResponse.json(
+          {
+            error:
+              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -65,9 +92,26 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const currentUser = await getUserFromBearerToken(req.headers.get('authorization'));
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
+    }
+
+    const currentUser = await getUserFromBearerToken(authHeader);
     if (!currentUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized: invalid or expired token' },
+        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      );
     }
 
     const body = (await req.json()) as SettingsUpdatePayload;
@@ -119,6 +163,16 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
+      const msg = error.message ?? String(error);
+      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
+        return NextResponse.json(
+          {
+            error:
+              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
+          },
+          { status: 500 }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

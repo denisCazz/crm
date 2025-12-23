@@ -138,17 +138,21 @@ function MainApp() {
         const res = await fetch("/api/settings", {
           headers: { Authorization: `Bearer ${session.session.access_token}` },
         });
-        if (res.ok) {
-          const json = await res.json();
-          if (json.settings) {
-            setBrandSettings({
-              brand_name: json.settings.brand_name,
-              logo_url: json.settings.logo_url,
-            });
-          }
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          console.error("/api/settings failed", { status: res.status, json });
+          return;
         }
-      } catch {
-        // Ignore errors
+
+        if (json?.settings) {
+          setBrandSettings({
+            brand_name: json.settings.brand_name,
+            logo_url: json.settings.logo_url,
+          });
+        }
+      } catch (e) {
+        console.error("/api/settings failed (network/parse)", e);
       }
     };
 

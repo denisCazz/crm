@@ -248,13 +248,37 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
   smtp_from_name text,
   smtp_reply_to text,
 
+  api_key text UNIQUE,
+
   created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
   updated_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
 
   CONSTRAINT app_settings_owner_unique UNIQUE (owner_id)
 );
 
+-- Backfill/compat: if table already existed without api_key, add it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema='public' AND table_name='app_settings'
+  ) THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='app_settings' AND column_name='api_key'
+    ) THEN
+      ALTER TABLE public.app_settings
+        ADD COLUMN api_key text UNIQUE;
+    END IF;
+  END IF;
+END$$;
+
 CREATE INDEX IF NOT EXISTS app_settings_owner_idx ON public.app_settings(owner_id);
+
+-- Lookup veloce per /api/leads (X-API-Key)
+CREATE INDEX IF NOT EXISTS app_settings_api_key_idx ON public.app_settings(api_key) WHERE api_key IS NOT NULL;
 
 DROP TRIGGER IF EXISTS app_settings_set_updated_at ON public.app_settings;
 CREATE TRIGGER app_settings_set_updated_at

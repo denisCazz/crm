@@ -263,6 +263,7 @@ function SettingsApp() {
 
     const json = (await res.json()) as { settings: AppSettings | null; error?: string };
     if (!res.ok) {
+      console.error('/api/settings failed', { status: res.status, json });
       throw new Error(json.error ?? 'Impossibile caricare le impostazioni');
     }
 
