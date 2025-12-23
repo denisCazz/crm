@@ -4,11 +4,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { useSupabase } from '@/lib/supabase';
+import { useSupabaseSafe } from '@/lib/supabase';
 import { ToastProvider, useToast } from '@/components/Toaster';
 
 function ResetPasswordInner() {
-  const supabase = useSupabase();
+  const supabase = useSupabaseSafe();
   const router = useRouter();
   const { push } = useToast();
 
@@ -28,6 +28,7 @@ function ResetPasswordInner() {
   }, [sessionReady, password, confirmPassword]);
 
   useEffect(() => {
+    if (!supabase) return;
     let cancelled = false;
 
     (async () => {
@@ -87,6 +88,13 @@ function ResetPasswordInner() {
     e.preventDefault();
     if (!canSubmit) return;
 
+    if (!supabase) {
+      const msg = 'Client di autenticazione non disponibile.';
+      setErr(msg);
+      push('error', msg);
+      return;
+    }
+
     setSaving(true);
     setErr(null);
 
@@ -116,6 +124,8 @@ function ResetPasswordInner() {
         <div className="card-elevated p-6 sm:p-8 space-y-4">
           {loading ? (
             <div className="text-sm text-muted">Verifico il link…</div>
+          ) : !supabase ? (
+            <div className="text-sm text-muted">Carico autenticazione…</div>
           ) : err ? (
             <div className="space-y-4">
               <div className="rounded-xl bg-danger/10 border border-danger/20 px-4 py-3 text-sm text-danger">
