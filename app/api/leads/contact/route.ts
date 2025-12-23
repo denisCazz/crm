@@ -47,6 +47,8 @@ const uniqueStrings = (values: (string | null | undefined)[]): string[] => {
   return Array.from(set);
 };
 
+
+
 export async function OPTIONS(): Promise<Response> {
   return new Response(null, { status: 204, headers: getCorsHeaders() });
 }
@@ -139,17 +141,13 @@ export async function POST(req: Request): Promise<Response> {
       lead_source: 'contact',
       contact_request: message,
       tags: mergedTags.length > 0 ? mergedTags : null,
+      notes: message,
     };
 
     if (first_name && !existing.first_name) update.first_name = first_name;
     if (last_name && !existing.last_name) update.last_name = last_name;
     if (phone && !existing.phone) update.phone = phone;
     if (email && !existing.email) update.email = email;
-
-    const currentNotes = existing.notes?.trim();
-    if (!currentNotes) {
-      update.notes = 'Richiesta contatto';
-    }
 
     const { error: updateError } = await supabase
       .from('clients')
@@ -167,7 +165,7 @@ export async function POST(req: Request): Promise<Response> {
     first_name: first_name || null,
     last_name: last_name || null,
     phone: phone || null,
-    notes: 'Richiesta contatto',
+    notes: message,
     tags: tags.length > 0 ? tags : null,
     status: 'new',
     lead_source: 'contact',

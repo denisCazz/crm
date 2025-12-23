@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { User } from '@supabase/supabase-js';
 
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
 import { useSupabaseSafe } from '../../lib/supabase';
-import { useTheme } from '../../components/ThemeProvider';
+import { AppLayout } from '../../components/layout/AppLayout';
 import type { AppSettings, EmailTemplate, License } from '../../types';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
@@ -62,46 +63,9 @@ function isLicenseValid(data: License | null): { ok: true } | { ok: false; reaso
   return { ok: true };
 }
 
-function ThemeSection() {
-  const { theme, setTheme } = useTheme();
-  
-  const themes = [
-    { value: 'light', label: 'Chiaro', icon: '☀️' },
-    { value: 'dark', label: 'Scuro', icon: '🌙' },
-    { value: 'system', label: 'Sistema', icon: '💻' },
-  ] as const;
-
-  return (
-    <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">Tema</h2>
-      <p className="text-sm text-muted">Scegli la modalità di visualizzazione preferita</p>
-      <div className="flex flex-wrap gap-3">
-        {themes.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTheme(t.value)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all duration-200 ${
-              theme === t.value
-                ? 'border-purple-500 bg-purple-500/20 text-foreground'
-                : 'border-border bg-surface-hover text-muted hover:border-border-hover hover:bg-surface-active'
-            }`}
-          >
-            <span className="text-lg">{t.icon}</span>
-            <span className="font-medium">{t.label}</span>
-            {theme === t.value && (
-              <svg className="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            )}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SettingsApp() {
   const supabase = useSupabaseSafe();
+  const router = useRouter();
   const { push } = useToast();
 
   const [user, setUser] = useState<User | null>(null);
@@ -184,6 +148,12 @@ function SettingsApp() {
   useEffect(() => {
     document.title = 'Impostazioni · Bitora CRM';
   }, []);
+
+  const handleLogout = useCallback(async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    router.push('/');
+  }, [supabase, router]);
 
   useEffect(() => {
     if (!supabase) {
@@ -777,78 +747,17 @@ function SettingsApp() {
   const isAdmin = isAdminUser(user);
 
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased">
+    <AppLayout
+      user={user}
+      brandName={String(settings.brand_name || 'Bitora CRM')}
+      logoUrl={String(settings.logo_url || '') || null}
+      onLogout={handleLogout}
+    >
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold text-foreground">Impostazioni</h1>
-            <p className="text-sm text-muted">Brand, SMTP e template email marketing.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/email"
-              className="inline-flex items-center justify-center rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-surface-hover"
-            >
-              Invia email
-            </Link>
-          </div>
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold text-foreground">Impostazioni</h1>
+          <p className="text-sm text-muted">Configurazione tecnica: SMTP, API e template email.</p>
         </header>
-
-        <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground">🏷️ Brand e Personalizzazione</h2>
-            <p className="text-sm text-muted mt-1">Personalizza il nome e il logo che appariranno nella pagina di login e nell&apos;intestazione.</p>
-          </div>
-          
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Nome brand</span>
-              <input
-                value={String(settings.brand_name ?? '')}
-                onChange={(e) => setSettings((s) => ({ ...s, brand_name: e.target.value }))}
-                placeholder="Bitora CRM"
-                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
-              />
-              <span className="text-xs text-muted">Il nome mostrato nel login e nel titolo della pagina</span>
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Logo URL</span>
-              <input
-                value={String(settings.logo_url ?? '')}
-                onChange={(e) => setSettings((s) => ({ ...s, logo_url: e.target.value }))}
-                placeholder="https://esempio.com/logo.png"
-                className="w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
-              />
-              <span className="text-xs text-muted">URL di un&apos;immagine (PNG, JPG, SVG). Lascia vuoto per usare l&apos;icona predefinita.</span>
-            </label>
-          </div>
-
-          {/* Anteprima logo */}
-          {settings.logo_url && (
-            <div className="flex items-center gap-4 p-4 rounded-xl bg-surface-hover border border-border">
-              <div className="h-16 w-16 rounded-xl bg-surface flex items-center justify-center overflow-hidden border border-border">
-                <img 
-                  src={settings.logo_url} 
-                  alt="Logo preview" 
-                  className="max-h-14 max-w-14 object-contain"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{settings.brand_name || 'Bitora CRM'}</p>
-                <p className="text-xs text-muted">Anteprima del brand</p>
-              </div>
-            </div>
-          )}
-        </section>
 
         {/* Sezione API Key per integrazione esterna */}
         <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
@@ -944,8 +853,6 @@ function SettingsApp() {
             </div>
           </div>
         </section>
-
-        <ThemeSection />
 
         <section className="rounded-2xl border border-border bg-surface/60 p-5 sm:p-6 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">SMTP (invio email)</h2>
@@ -1504,7 +1411,7 @@ function SettingsApp() {
         </section>
         )}
       </div>
-    </div>
+    </AppLayout>
   );
 }
 

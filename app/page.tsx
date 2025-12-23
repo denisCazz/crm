@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { User } from "@supabase/supabase-js";
 
 import { ToastProvider, useToast } from "../components/Toaster";
@@ -9,9 +11,10 @@ import { Client, License, AppSettings } from "../types";
 import { useSupabaseSafe } from "../lib/supabase";
 import { ClientDashboard } from "../components/clients/ClientDashboard";
 import { NewClientButton, NewClientButtonRef } from "../components/clients/NewClientButton";
-import { Navbar } from "../components/Navbar";
 import { NewsletterModal } from "../components/NewsletterModal";
 import { normalizeClient } from "../lib/normalizeClient";
+import { AppLayout } from "../components/layout/AppLayout";
+import { getCachedBrand, setCachedBrand } from "../lib/brandCache";
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "")
   .split(",")
@@ -39,6 +42,9 @@ function adminBypassLicense(user: User): License {
 }
 
 function getDisplayName(user: User | null): string {
+  const meta = ((user?.user_metadata ?? {}) as Record<string, unknown>) || {};
+  const firstName = typeof meta.first_name === 'string' ? meta.first_name.trim() : '';
+  if (firstName) return firstName;
   if (!user?.email) return "Cliente";
   const localPart = user.email.split("@")[0] ?? "";
   if (!localPart) return "Cliente";
@@ -46,6 +52,7 @@ function getDisplayName(user: User | null): string {
 }
 
 function MainApp() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<Client[]>([]);
@@ -130,6 +137,13 @@ function MainApp() {
   useEffect(() => {
     if (!supabase || !user) return;
 
+    // Load from cache first to avoid a call every time
+    const cached = getCachedBrand(user.id);
+    if (cached) {
+      setBrandSettings({ brand_name: cached.brand_name, logo_url: cached.logo_url });
+      return;
+    }
+
     const fetchSettings = async () => {
       const { data: session } = await supabase.auth.getSession();
       if (!session?.session?.access_token) return;
@@ -146,10 +160,8 @@ function MainApp() {
         }
 
         if (json?.settings) {
-          setBrandSettings({
-            brand_name: json.settings.brand_name,
-            logo_url: json.settings.logo_url,
-          });
+          setBrandSettings({ brand_name: json.settings.brand_name, logo_url: json.settings.logo_url });
+          setCachedBrand(user.id, json.settings.brand_name ?? null, json.settings.logo_url ?? null);
         }
       } catch (e) {
         console.error("/api/settings failed (network/parse)", e);
@@ -251,7 +263,8 @@ function MainApp() {
     if (!supabase) return;
     await supabase.auth.signOut();
     push("success", "Logout effettuato con successo!");
-  }, [supabase, push]);
+    router.push("/");
+  }, [supabase, push, router]);
 
   const exportToCSV = useCallback(() => {
     if (rows.length === 0) return;
@@ -377,47 +390,92 @@ function MainApp() {
   }
 
   return (
-    <div className="min-h-screen bg-background gradient-mesh">
-      {/* Navbar */}
-      <Navbar
-        user={user}
-        brandName={brandName}
-        logoUrl={logoUrl}
-        onLogout={handleLogout}
-        onNewClient={handleNewClient}
-        onNewsletter={openNewsletterModal}
-        onExportCSV={exportToCSV}
-        onStatsOpen={openStatsModal}
-        clientCount={rows.length}
-        newClientCount={rows.filter(r => r.status === 'new').length}
-        canExport={rows.length > 0}
-        canShowStats={rows.length > 0}
-        sendingNewsletter={sendingNewsletter}
-      />
-
+    <AppLayout
+      user={user}
+      brandName={brandName}
+      logoUrl={logoUrl}
+      onLogout={handleLogout}
+    >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Welcome Card */}
         <div className="card-elevated p-4 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2 max-w-2xl">
               <h2 className="text-lg font-semibold text-foreground">
-                Bentornato, {getDisplayName(user)}! 👋
+                Ciao {getDisplayName(user)}! 👋
               </h2>
               <p className="text-sm text-muted">
                 Gestisci i tuoi clienti, monitora le interazioni e mantieni la pipeline sempre aggiornata.
               </p>
             </div>
-            <div className="w-full lg:w-auto flex-shrink-0">
+            <div className="w-full lg:w-auto flex-shrink-0 space-y-3">
               {isLicenseActive && (
-                <NewClientButton 
+                <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+                  <button
+                    type="button"
+                    onClick={openStatsModal}
+                    disabled={rows.length === 0}
+                    className="btn btn-secondary"
+                  >
+                    Statistiche
+                  </button>
+                  <button
+                    type="button"
+                    onClick={exportToCSV}
+                    disabled={rows.length === 0}
+                    className="btn btn-secondary"
+                  >
+                    Esporta CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openNewsletterModal}
+                    disabled={sendingNewsletter}
+                    className="btn btn-secondary"
+                  >
+                    Newsletter
+                  </button>
+                </div>
+              )}
+              {isLicenseActive && (
+                <NewClientButton
                   ref={newClientButtonRef}
-                  onCreated={handleClientCreated} 
-                  fullWidth 
+                  onCreated={handleClientCreated}
+                  fullWidth
                 />
               )}
             </div>
           </div>
         </div>
+
+        {/* Email sections */}
+        {isLicenseActive && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="card-elevated p-4 sm:p-6 space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-foreground">Newsletter</h3>
+                <p className="text-sm text-muted">Invio massivo in BCC usando un template email.</p>
+              </div>
+              <div className="flex items-center justify-end">
+                <Link href="/email/newsletter" className="btn btn-primary">
+                  Apri Newsletter
+                </Link>
+              </div>
+            </div>
+
+            <div className="card-elevated p-4 sm:p-6 space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-foreground">Contatti</h3>
+                <p className="text-sm text-muted">Invio singolo o multiplo a uno o più contatti selezionati.</p>
+              </div>
+              <div className="flex items-center justify-end">
+                <Link href="/email/contatti" className="btn btn-primary">
+                  Apri Contatti
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main content */}
         {isLicenseActive && (
@@ -440,23 +498,7 @@ function MainApp() {
         clientCount={rows.filter(r => r.email).length}
         sending={sendingNewsletter}
       />
-
-      {/* Footer */}
-      <footer className="py-6 text-center text-xs text-muted border-t border-border mt-8">
-        <p>
-          Powered by <span className="font-medium text-foreground">Cazzulo Denis</span>
-          {' · '}
-          <a
-            href="https://bitora.it"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline"
-          >
-            Bitora.it
-          </a>
-        </p>
-      </footer>
-    </div>
+    </AppLayout>
   );
 }
 

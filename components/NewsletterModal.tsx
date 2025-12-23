@@ -117,7 +117,7 @@ export function NewsletterModal({ isOpen, onClose, onSend, clientCount, sending 
               </div>
               <p className="text-foreground font-medium">Nessun template disponibile</p>
               <p className="text-sm text-muted mt-1">
-                Crea un template email dalla pagina <a href="/email" className="text-primary hover:underline">Invia Email</a>
+                Crea un template email dalla pagina <a href="/email/contatti" className="text-primary hover:underline">Contatti</a>
               </p>
             </div>
           ) : (
