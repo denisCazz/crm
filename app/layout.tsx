@@ -6,6 +6,10 @@ export const metadata = {
   title: "Bitora CRM",
   description: "CRM minimale e veloce per PMI.",
   metadataBase: new URL("https://bitora-crm.it"),
+  icons: {
+    icon: [{ url: "/CRM.ico" }],
+    shortcut: ["/CRM.ico"],
+  },
 };
 
 

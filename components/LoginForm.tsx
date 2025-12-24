@@ -106,11 +106,14 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
               fetchPriority="high"
             />
           ) : (
-            <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-primary/10 flex items-center justify-center shadow-theme-md">
-              <svg className="h-8 w-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
+            <img
+              src="/CRM.png"
+              alt={brandName}
+              className="h-24 w-24 mx-auto mb-4 rounded-2xl object-contain bg-surface shadow-theme-md"
+              decoding="async"
+              loading="eager"
+              fetchPriority="high"
+            />
           )}
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
             {brandName}
