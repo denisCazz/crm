@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabaseClient } from '../../../../lib/supabaseServer';
-import { decryptSecret } from '../../../../lib/crypto';
 import { sendEmail } from '../../../../lib/emailSender';
 
 type NewsletterPayload = {
@@ -24,6 +23,17 @@ async function getUserIdFromBearerToken(authHeader: string | null): Promise<stri
   return data.user.id;
 }
 
+async function getUserEmailFromToken(authHeader: string | null): Promise<string | null> {
+  if (!authHeader) return null;
+  const [kind, token] = authHeader.split(' ');
+  if (kind?.toLowerCase() !== 'bearer' || !token) return null;
+
+  const supabase = getServiceSupabaseClient();
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user?.email) return null;
+  return data.user.email;
+}
+
 export async function POST(req: Request) {
   const supabase = getServiceSupabaseClient();
 
@@ -43,7 +53,8 @@ export async function POST(req: Request) {
     }
 
     const userId = await getUserIdFromBearerToken(authHeader);
-    if (!userId) {
+    const userEmail = await getUserEmailFromToken(authHeader);
+    if (!userId || !userEmail) {
       return NextResponse.json(
         { error: 'Unauthorized: invalid or expired token' },
         { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
@@ -57,13 +68,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'template_id is required' }, { status: 400 });
     }
 
-    // Fetch settings, template, and all clients with email
-    const [settingsRes, templateRes, clientsRes] = await Promise.all([
-      supabase
-        .from('app_settings')
-        .select('*')
-        .eq('owner_id', userId)
-        .maybeSingle(),
+    // Fetch template and clients with email
+    const [templateRes, clientsRes, settingsRes] = await Promise.all([
       supabase
         .from('email_templates')
         .select('*')
@@ -75,11 +81,13 @@ export async function POST(req: Request) {
         .select('id, first_name, last_name, email')
         .eq('owner_id', userId)
         .not('email', 'is', null),
+      supabase
+        .from('app_settings')
+        .select('*')
+        .eq('owner_id', userId)
+        .maybeSingle(),
     ]);
 
-    if (settingsRes.error) {
-      return NextResponse.json({ error: settingsRes.error.message }, { status: 500 });
-    }
     if (templateRes.error) {
       return NextResponse.json({ error: templateRes.error.message }, { status: 400 });
     }
@@ -87,7 +95,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
     }
 
-    const settings = settingsRes.data;
     const template = templateRes.data as {
       id: string;
       owner_id: string;
@@ -104,11 +111,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nessun cliente con email trovato.' }, { status: 400 });
     }
 
-    if (!settings?.smtp_host || !settings?.smtp_port || !settings?.smtp_user || !settings?.smtp_password_enc) {
-      return NextResponse.json({ error: 'SMTP non configurato. Vai su Impostazioni per configurarlo.' }, { status: 400 });
-    }
-
-    const smtpPassword = decryptSecret(String(settings.smtp_password_enc));
+    const settings = settingsRes.data;
 
     // For newsletter, we use generic vars (no personalization in BCC mode)
     const vars: Record<string, string> = {
@@ -122,10 +125,6 @@ export async function POST(req: Request) {
     const subject = renderTemplate(template.subject, vars);
     const html = renderTemplate(template.body_html, vars);
     const text = template.body_text ? renderTemplate(template.body_text, vars) : undefined;
-
-    const fromEmail = settings.smtp_from_email ?? settings.smtp_user;
-    const fromName = settings.smtp_from_name ?? settings.brand_name ?? undefined;
-    const from = fromName ? `${fromName} <${fromEmail}>` : String(fromEmail);
 
     // Extract all emails for BCC
     const bccEmails = clients.map((c: { email: string }) => c.email);
@@ -151,25 +150,16 @@ export async function POST(req: Request) {
     const sendId = sendRow?.id as string;
 
     try {
-      // Invia email usando il nuovo helper (supporta Resend API + SMTP)
-      await sendEmail(
-        {
-          host: String(settings.smtp_host),
-          port: Number(settings.smtp_port),
-          secure: Boolean(settings.smtp_secure),
-          user: String(settings.smtp_user),
-          password: smtpPassword,
-        },
-        {
-          from,
-          to: fromEmail, // Send to self
-          bcc: bccEmails, // All clients in BCC
-          subject,
-          html,
-          text,
-          replyTo: settings.smtp_reply_to ?? undefined,
-        }
-      );
+      // Invia email usando il nuovo sistema Brevo centralizzato
+      await sendEmail({
+        to: process.env.BREVO_SMTP_FROM_EMAIL || 'noreply@bitora-crm.com',
+        bcc: bccEmails,
+        subject,
+        html,
+        text,
+        replyTo: userEmail,
+        fromName: settings?.brand_name ? `${settings.brand_name}` : 'Bitora CRM',
+      });
 
       await supabase
         .from('email_sends')

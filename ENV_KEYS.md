@@ -20,12 +20,32 @@ Queste variabili servono per far funzionare Bitora CRM (Next.js + Supabase) con 
     - `/api/email/send`
   - Non va mai esposta nel browser.
 
-### Cifratura password SMTP
+### SMTP Sistema (Brevo)
+
+- `BREVO_SMTP_HOST`
+  - Default: `smtp-relay.brevo.com`
+  - Host SMTP Brevo per invio email centralizzato
+
+- `BREVO_SMTP_PORT`
+  - Default: `587`
+  - Porta SMTP
+
+- `BREVO_SMTP_USER`
+  - Username SMTP Brevo (es: `9e3f1b001@smtp-brevo.com`)
+
+- `BREVO_SMTP_PASSWORD`
+  - Password SMTP Brevo (la chiave SMTP da Brevo dashboard)
+
+- `BREVO_SMTP_FROM_EMAIL`
+  - Email mittente statica (es: `noreply@bitora-crm.com`)
+  - Le risposte vanno al Reply-To dell'utente
+
+### Cifratura password SMTP (legacy)
 
 - `SMTP_ENCRYPTION_SECRET`
   - Segreto usato per cifrare/decifrare la password SMTP salvata in `public.app_settings.smtp_password_enc`.
-  - Deve essere lungo e imprevedibile.
-  - Se lo cambi dopo aver salvato una password SMTP, le password già cifrate non saranno più decifrabili (dovrai reinserirle da Impostazioni).
+  - **Nota:** Con il nuovo sistema Brevo centralizzato, questo non è più necessario.
+  - Mantienilo per backward compatibility.
 
 ## Admin (opzionale ma consigliato)
 
