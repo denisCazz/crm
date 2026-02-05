@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { User } from '@supabase/supabase-js';
+import type { User } from '../../lib/auth';
 
 interface UserMenuDropdownProps {
   user: User;

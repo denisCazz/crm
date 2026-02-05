@@ -2,11 +2,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { User } from '@supabase/supabase-js';
 
 import LoginForm from '../../../components/LoginForm';
 import { useSupabaseSafe } from '../../../lib/supabase';
 import type { License } from '../../../types';
+import { verifySession, getStoredUser, getStoredSession } from '../../../lib/authClient';
+import type { User } from '../../../lib/auth';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
   .split(',')
@@ -76,25 +77,40 @@ export function EmailGate({ title, children }: EmailGateProps) {
     if (title) document.title = title;
   }, [title]);
 
+  // Verifica autenticazione con nuovo sistema
   useEffect(() => {
-    if (!supabase) {
+    const checkAuth = async () => {
+      // Prova prima a verificare la sessione
+      const result = await verifySession();
+      if (result) {
+        setUser(result.user);
+      } else {
+        // Fallback: prova a ottenere user dal localStorage
+        const storedUser = getStoredUser();
+        if (storedUser) {
+          setUser(storedUser);
+        }
+      }
       setLoadingUser(false);
-      return;
-    }
-
-    supabase.auth.getSession().then((response) => {
-      setUser(response.data?.session?.user ?? null);
-      setLoadingUser(false);
-    });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-
-    return () => {
-      subscription?.subscription.unsubscribe();
     };
-  }, [supabase]);
+
+    checkAuth();
+
+    // Verifica periodicamente la sessione (ogni 30 secondi)
+    const interval = setInterval(async () => {
+      const session = getStoredSession();
+      if (session) {
+        const result = await verifySession();
+        if (result) {
+          setUser(result.user);
+        } else {
+          setUser(null);
+        }
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!supabase || !user) {

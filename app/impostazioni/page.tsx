@@ -3,11 +3,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
-
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
 import { useSupabaseSafe } from '../../lib/supabase';
+import { useAuth } from '../../lib/useAuth';
+import { signOut as authSignOut, getStoredSession } from '../../lib/authClient';
+import type { User } from '../../lib/auth';
 import { AppLayout } from '../../components/layout/AppLayout';
 import type { AppSettings, EmailTemplate, License } from '../../types';
 
@@ -67,6 +68,9 @@ function SettingsApp() {
   const supabase = useSupabaseSafe();
   const router = useRouter();
   const { push } = useToast();
+  
+  // Hook deve essere chiamato al livello superiore
+  const { user: authUser, loading: authLoading } = useAuth();
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,29 +155,15 @@ function SettingsApp() {
 
   const handleLogout = useCallback(async () => {
     if (!supabase) return;
-    await supabase.auth.signOut();
+    await authSignOut();
     router.push('/');
   }, [supabase, router]);
 
+  // Aggiorna user e loading quando authUser cambia
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
-    supabase.auth.getSession().then((response) => {
-      setUser(response.data?.session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-
-    return () => {
-      subscription?.subscription.unsubscribe();
-    };
-  }, [supabase]);
+    setUser(authUser);
+    setLoading(authLoading);
+  }, [authUser, authLoading]);
 
   useEffect(() => {
     if (!supabase || !user) {
@@ -270,8 +260,8 @@ function SettingsApp() {
     
     setLoadingUsers(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
+      const session = getStoredSession();
+      const token = session?.token;
       
       if (!token) {
         push('error', 'Sessione scaduta');
@@ -653,8 +643,8 @@ function SettingsApp() {
     
     setSavingUserSettings(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
+      const session = getStoredSession();
+      const token = session?.token;
       if (!token) {
         push('error', 'Sessione scaduta');
         return;

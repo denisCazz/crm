@@ -9,6 +9,7 @@ import { EmailGate } from '../_components/EmailGate';
 import { useSupabaseSafe } from '../../../lib/supabase';
 import { AppLayout } from '../../../components/layout/AppLayout';
 import type { EmailTemplate } from '../../../types';
+import { signOut as authSignOut } from '../../../lib/authClient';
 
 function renderTemplate(input: string, vars: Record<string, string>): string {
   return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? '');
@@ -360,9 +361,7 @@ function TemplatesPageInner() {
         <AppLayout
           user={user}
           onLogout={async () => {
-            if (supabase) {
-              await supabase.auth.signOut();
-            }
+            await authSignOut();
             router.push('/');
           }}
         >

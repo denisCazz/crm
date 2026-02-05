@@ -9,6 +9,8 @@ import { NewsletterModal } from '../../../components/NewsletterModal';
 import { useSupabaseSafe } from '../../../lib/supabase';
 import { EmailGate } from '../_components/EmailGate';
 import { AppLayout } from '../../../components/layout/AppLayout';
+import { getStoredSession } from '../../../lib/authClient';
+import { signOut } from '../../../lib/authClient';
 
 function NewsletterInner({ userId }: { userId: string }) {
   const supabase = useSupabaseSafe();
@@ -52,8 +54,8 @@ function NewsletterInner({ userId }: { userId: string }) {
     async (templateId: string) => {
       if (!supabase) return;
 
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
+      const session = getStoredSession();
+      const token = session?.token;
       if (!token) {
         push('error', 'Sessione non valida.');
         return;
@@ -140,7 +142,7 @@ function NewsletterPageInner() {
           user={user}
           onLogout={async () => {
             if (supabase) {
-              await supabase.auth.signOut();
+              await signOut();
             }
             router.push('/');
           }}

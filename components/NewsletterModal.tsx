@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSupabaseSafe } from '../lib/supabase';
 import type { EmailTemplate } from '../types';
+import { getStoredSession } from '../lib/authClient';
 
 interface NewsletterModalProps {
   isOpen: boolean;
@@ -23,8 +24,8 @@ export function NewsletterModal({ isOpen, onClose, onSend, clientCount, sending 
 
     const fetchTemplates = async () => {
       setLoading(true);
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.user?.id) {
+      const session = getStoredSession();
+      if (!session?.user_id) {
         setLoading(false);
         return;
       }
@@ -32,7 +33,7 @@ export function NewsletterModal({ isOpen, onClose, onSend, clientCount, sending 
       const { data, error } = await supabase
         .from('email_templates')
         .select('*')
-        .eq('owner_id', session.session.user.id)
+        .eq('owner_id', session.user_id)
         .order('name', { ascending: true });
 
       if (!error && data) {

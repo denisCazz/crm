@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
+import type { User } from '../lib/auth';
 import { ThemeToggle } from '../ThemeProvider';
 import { getCachedBrand } from '../../lib/brandCache';
 

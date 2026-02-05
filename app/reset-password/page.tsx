@@ -4,16 +4,15 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { useSupabaseSafe } from '@/lib/supabase';
 import { ToastProvider, useToast } from '@/components/Toaster';
+import { resetPassword } from '@/lib/authClient';
 
 function ResetPasswordInner() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   const { push } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [sessionReady, setSessionReady] = useState(false);
+  const [tokenValid, setTokenValid] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [password, setPassword] = useState('');
@@ -21,77 +20,38 @@ function ResetPasswordInner() {
   const [saving, setSaving] = useState(false);
 
   const canSubmit = useMemo(() => {
-    if (!sessionReady) return false;
+    if (!tokenValid) return false;
     if (!password || password.length < 8) return false;
     if (password !== confirmPassword) return false;
     return true;
-  }, [sessionReady, password, confirmPassword]);
+  }, [tokenValid, password, confirmPassword]);
 
   useEffect(() => {
-    if (!supabase) return;
-    let cancelled = false;
+    // Verifica se c'è un token nell'URL
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
 
-    (async () => {
-      try {
-        // Support both legacy implicit-flow hashes and PKCE code flow.
-        const url = new URL(window.location.href);
+    if (!token) {
+      setErr('Link di recupero non valido. Il token è mancante.');
+      setLoading(false);
+      return;
+    }
 
-        const hashParams = new URLSearchParams(url.hash.startsWith('#') ? url.hash.slice(1) : url.hash);
-        const access_token = hashParams.get('access_token');
-        const refresh_token = hashParams.get('refresh_token');
-
-        if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
-          if (error) throw error;
-          if (!cancelled) {
-            setSessionReady(true);
-          }
-          return;
-        }
-
-        const code = url.searchParams.get('code');
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          if (!cancelled) {
-            setSessionReady(true);
-          }
-          return;
-        }
-
-        // If already signed in, allow password update.
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        if (data.session) {
-          if (!cancelled) {
-            setSessionReady(true);
-          }
-          return;
-        }
-
-        throw new Error('Link di recupero non valido o scaduto. Richiedi un nuovo reset.');
-      } catch (e: unknown) {
-        if (cancelled) return;
-        setErr(e instanceof Error ? e.message : String(e));
-      } finally {
-        if (cancelled) return;
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase]);
+    // Il token viene verificato quando l'utente invia il form
+    // Per ora, assumiamo che sia valido se presente
+    setTokenValid(true);
+    setLoading(false);
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit) return;
 
-    if (!supabase) {
-      const msg = 'Client di autenticazione non disponibile.';
-      setErr(msg);
-      push('error', msg);
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+
+    if (!token) {
+      setErr('Token non trovato nell\'URL.');
       return;
     }
 
@@ -99,10 +59,13 @@ function ResetPasswordInner() {
     setErr(null);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      const result = await resetPassword(token, password);
+      
+      if (!result.success) {
+        throw new Error(result.error || 'Errore durante il reset della password');
+      }
 
-      push('success', 'Password aggiornata. Puoi accedere.');
+      push('success', 'Password aggiornata con successo! Ora puoi accedere.');
       router.push('/');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -124,8 +87,6 @@ function ResetPasswordInner() {
         <div className="card-elevated p-6 sm:p-8 space-y-4">
           {loading ? (
             <div className="text-sm text-muted">Verifico il link…</div>
-          ) : !supabase ? (
-            <div className="text-sm text-muted">Carico autenticazione…</div>
           ) : err ? (
             <div className="space-y-4">
               <div className="rounded-xl bg-danger/10 border border-danger/20 px-4 py-3 text-sm text-danger">
@@ -146,6 +107,7 @@ function ResetPasswordInner() {
                   className="input-field"
                   placeholder="Minimo 8 caratteri"
                   autoComplete="new-password"
+                  required
                 />
               </div>
 
@@ -158,6 +120,7 @@ function ResetPasswordInner() {
                   className="input-field"
                   placeholder="Ripeti la password"
                   autoComplete="new-password"
+                  required
                 />
               </div>
 
@@ -168,10 +131,6 @@ function ResetPasswordInner() {
               <Link href="/" className="btn btn-secondary w-full">
                 Annulla
               </Link>
-
-              {!sessionReady ? (
-                <p className="text-xs text-muted">Attendi la verifica del link prima di salvare.</p>
-              ) : null}
             </form>
           )}
         </div>

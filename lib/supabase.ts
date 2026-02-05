@@ -8,7 +8,8 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 // Singleton client per il browser
 let supabaseInstance: SupabaseClient | null = null;
 
-// Funzione per creare/ottenere il client Supabase
+// Funzione per creare/ottenere il client Supabase (SOLO per operazioni sul database)
+// NON usare per autenticazione: usa le funzioni in lib/authClient.ts
 export function getSupabaseClient(): SupabaseClient | null {
   // Durante SSR, ritorna null
   if (typeof window === 'undefined') {
@@ -30,6 +31,7 @@ export function getSupabaseClient(): SupabaseClient | null {
 }
 
 // Hook per usare Supabase in modo sicuro nei componenti
+// NOTA: Usa solo per operazioni sul database, NON per autenticazione
 export function useSupabase(): SupabaseClient {
   const client = getSupabaseClient();
   
@@ -46,4 +48,7 @@ export function useSupabaseSafe(): SupabaseClient | null {
 }
 
 // Tipi utili
-export type { User, SupabaseClient } from '@supabase/supabase-js';
+export type { SupabaseClient } from '@supabase/supabase-js';
+
+// Re-export User type da auth personalizzata
+export type { User } from './auth';

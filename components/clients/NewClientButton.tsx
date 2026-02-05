@@ -6,6 +6,7 @@ import { TagInput } from '../TagInput';
 import { useToast } from '../Toaster';
 import { useSupabaseSafe } from '../../lib/supabase';
 import { Client } from '../../types';
+import { getStoredSession } from '../../lib/authClient';
 
 interface NewClientButtonProps {
   onCreated: (client: Client) => void;
@@ -60,8 +61,8 @@ export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonPro
     setSaving(true);
     setErr(null);
     try {
-      const { data: who } = await supabase.auth.getUser();
-      const uid = who?.user?.id;
+      const session = getStoredSession();
+      const uid = session?.user_id;
       if (!uid) throw new Error('Utente non autenticato');
 
       const insert = {

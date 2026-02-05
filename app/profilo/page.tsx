@@ -2,11 +2,12 @@
 
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { User } from '@supabase/supabase-js';
-
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
 import { useSupabaseSafe } from '../../lib/supabase';
+import { useAuth } from '../../lib/useAuth';
+import { signOut as authSignOut, getStoredSession } from '../../lib/authClient';
+import type { User } from '../../lib/auth';
 import { useTheme } from '../../components/ThemeProvider';
 import { AppLayout } from '../../components/layout/AppLayout';
 import type { AppSettings, License } from '../../types';
@@ -123,20 +124,12 @@ function ProfileApp() {
     document.title = 'Profilo · Bitora CRM';
   }, []);
 
+  const { user: authUser, loading: authLoading } = useAuth();
+  
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    supabase.auth.getSession().then((response) => {
-      setUser(response.data?.session?.user ?? null);
-      setLoading(false);
-    });
-    const { data: subscription } = supabase.auth.onAuthStateChange((_, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-    return () => { subscription?.subscription.unsubscribe(); };
-  }, [supabase]);
+    setUser(authUser);
+    setLoading(authLoading);
+  }, [authUser, authLoading]);
 
   useEffect(() => {
     if (!supabase || !user) {
@@ -169,9 +162,8 @@ function ProfileApp() {
   const canUse = useMemo(() => licenseState.status === 'active', [licenseState.status]);
 
   const fetchSettings = useCallback(async () => {
-    if (!supabase) return;
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+    const session = getStoredSession();
+    const token = session?.token;
     if (!token) return;
 
     const res = await fetch('/api/settings', {
@@ -189,7 +181,7 @@ function ProfileApp() {
         setCachedBrand(user.id, json.settings.brand_name ?? null, json.settings.logo_url ?? null);
       }
     }
-  }, [supabase, user?.id]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!canUse || !user?.id) return;
@@ -206,9 +198,20 @@ function ProfileApp() {
 
   useEffect(() => {
     if (!user) return;
-    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
-    setFirstName(typeof meta.first_name === 'string' ? meta.first_name : '');
-    setLastName(typeof meta.last_name === 'string' ? meta.last_name : '');
+    // Prova prima da first_name diretto (nuovo schema)
+    if (user.first_name) {
+      setFirstName(user.first_name);
+    } else {
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+      setFirstName(typeof meta.first_name === 'string' ? meta.first_name : '');
+    }
+    
+    if (user.last_name) {
+      setLastName(user.last_name);
+    } else {
+      const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+      setLastName(typeof meta.last_name === 'string' ? meta.last_name : '');
+    }
   }, [user]);
 
   const handleSaveSettings = useCallback(async () => {
@@ -244,21 +247,32 @@ function ProfileApp() {
     } finally {
       setSettingsSaving(false);
     }
-  }, [supabase, settings, push, user?.id]);
+  }, [settings, push, user?.id]);
 
   const handleSavePersonal = useCallback(async () => {
-    if (!supabase) return;
     setProfileSaving(true);
     try {
+      const session = getStoredSession();
+      if (!session) throw new Error('Sessione non valida');
+      
       const nextFirst = firstName.trim();
       const nextLast = lastName.trim();
-      const { data, error } = await supabase.auth.updateUser({
-        data: {
+      
+      const res = await fetch('/api/auth/user', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
           first_name: nextFirst || null,
           last_name: nextLast || null,
-        },
+        }),
       });
-      if (error) throw error;
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Errore');
+      
       if (data.user) {
         setUser(data.user);
       }
@@ -268,13 +282,12 @@ function ProfileApp() {
     } finally {
       setProfileSaving(false);
     }
-  }, [supabase, firstName, lastName, push]);
+  }, [firstName, lastName, push]);
 
   const handleLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    await authSignOut();
     router.push('/');
-  }, [supabase, router]);
+  }, [router]);
 
   if (loading) {
     return (

@@ -17,14 +17,14 @@ $$;
 
 -- Admin list
 CREATE TABLE IF NOT EXISTS public.admin_users (
-  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT timezone('utc', now())
 );
 
 -- Licenses
 CREATE TABLE IF NOT EXISTS public.licenses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   status text NOT NULL CHECK (status IN ('active', 'trial', 'inactive', 'expired')),
   expires_at timestamptz,
   plan text,
@@ -63,8 +63,8 @@ BEGIN
   ON public.admin_users
   FOR SELECT
   USING (
-    auth.role() = 'service_role'
-    OR user_id = auth.uid()
+    current_setting('role') = 'service_role'
+    OR user_id = public.current_user_id()
   );
 END$$;
 
@@ -79,8 +79,8 @@ BEGIN
     CREATE POLICY "Service role manages admin list"
     ON public.admin_users
     FOR ALL
-    USING (auth.role() = 'service_role')
-    WITH CHECK (auth.role() = 'service_role');
+    USING (current_setting('role') = 'service_role')
+    WITH CHECK (current_setting('role') = 'service_role');
   END IF;
 END$$;
 
@@ -95,7 +95,7 @@ BEGIN
     CREATE POLICY "Owners can read their license"
     ON public.licenses
     FOR SELECT
-    USING (auth.role() = 'service_role' OR user_id = auth.uid());
+    USING (current_setting('role') = 'service_role' OR user_id = public.current_user_id());
   END IF;
 END$$;
 
@@ -111,16 +111,12 @@ BEGIN
     ON public.licenses
     FOR ALL
     USING (
-      auth.role() = 'service_role'
-      OR EXISTS (
-        SELECT 1 FROM public.admin_users au WHERE au.user_id = auth.uid()
-      )
+      current_setting('role') = 'service_role'
+      OR public.is_current_user_admin()
     )
     WITH CHECK (
-      auth.role() = 'service_role'
-      OR EXISTS (
-        SELECT 1 FROM public.admin_users au WHERE au.user_id = auth.uid()
-      )
+      current_setting('role') = 'service_role'
+      OR public.is_current_user_admin()
     );
   END IF;
 END$$;
@@ -149,11 +145,9 @@ BEGIN
         ON public.clients
         FOR SELECT
         USING (
-          owner_id = auth.uid()
-          OR auth.role() = ''service_role''
-          OR EXISTS (
-            SELECT 1 FROM public.admin_users au WHERE au.user_id = auth.uid()
-          )
+          owner_id = public.current_user_id()
+          OR current_setting(''role'') = ''service_role''
+          OR public.is_current_user_admin()
         );
       ';
     END IF;

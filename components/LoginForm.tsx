@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { useSupabase } from "../lib/supabase";
+import { signIn, signUp, requestPasswordReset } from "../lib/authClient";
 import { useToast } from "./Toaster";
 import { ThemeToggle } from "./ThemeProvider";
 
@@ -15,7 +15,6 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
   const [showPwd, setShowPwd] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { push } = useToast();
-  const supabase = useSupabase();
 
   async function handleForgotPassword() {
     const email = form.email.trim();
@@ -26,10 +25,12 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
 
     setSubmitting(true);
     try {
-      const redirectTo = `${window.location.origin}/reset-password`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) throw error;
-      push("success", "Email di recupero inviata. Controlla la posta.");
+      const result = await requestPasswordReset(email);
+      if (result.error) {
+        push("error", result.error);
+      } else {
+        push("success", "Email di recupero inviata. Controlla la posta.");
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       push("error", errorMessage);
@@ -45,27 +46,26 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
     
     try {
       if (authMode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: form.email,
-          password: form.password,
-        });
-        if (error) throw error;
-        push("success", "Accesso effettuato con successo!");
+        const result = await signIn(form.email, form.password);
+        if ('error' in result) {
+          push("error", result.error);
+        } else {
+          push("success", "Accesso effettuato con successo!");
+          // Ricarica la pagina per aggiornare lo stato
+          window.location.href = '/';
+        }
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: form.email,
-          password: form.password,
-        });
-        if (error) throw error;
-        
-        // Crea automaticamente una licenza trial per il nuovo utente
-        if (data.user) {
+        const result = await signUp(form.email, form.password);
+        if ('error' in result) {
+          push("error", result.error);
+        } else {
+          // Crea automaticamente una licenza trial per il nuovo utente
           try {
             await fetch('/api/license', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                user_id: data.user.id,
+                user_id: result.user.id,
                 plan: 'trial',
                 status: 'trial',
               }),
@@ -74,9 +74,11 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
             console.error('Errore creazione licenza automatica:', licenseErr);
             // Non bloccare la registrazione se la licenza fallisce
           }
+          
+          push("success", "Registrazione completata! Ora puoi fare login.");
+          // Switch automatico a signin
+          setAuthMode("signin");
         }
-        
-        push("info", "Registrazione riuscita! Controlla l'email per confermare l'account.");
       }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);

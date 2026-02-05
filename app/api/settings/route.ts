@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabaseClient } from '../../../lib/supabaseServer';
 import { encryptSecret } from '../../../lib/crypto';
+import { getSessionFromToken } from '../../../lib/auth';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
   .split(',')
@@ -26,10 +27,9 @@ async function getUserFromBearerToken(authHeader: string | null): Promise<{ id: 
   const [kind, token] = authHeader.split(' ');
   if (kind?.toLowerCase() !== 'bearer' || !token) return null;
 
-  const supabase = getServiceSupabaseClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user?.id) return null;
-  return { id: data.user.id, email: data.user.email };
+  const result = await getSessionFromToken(token);
+  if (!result) return null;
+  return { id: result.user.id, email: result.user.email };
 }
 
 function isAdmin(email: string | undefined): boolean {

@@ -1,17 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabaseClient } from '../../../../lib/supabaseServer';
 import { randomBytes } from 'crypto';
-
-async function getUserIdFromBearerToken(authHeader: string | null): Promise<string | null> {
-  if (!authHeader) return null;
-  const [kind, token] = authHeader.split(' ');
-  if (kind?.toLowerCase() !== 'bearer' || !token) return null;
-
-  const supabase = getServiceSupabaseClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user?.id) return null;
-  return data.user.id;
-}
+import { requireAuth } from '../../../../lib/authHelpers';
 
 // Genera una API key sicura
 function generateApiKey(): string {
@@ -21,27 +11,8 @@ function generateApiKey(): string {
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-    if (!authHeader.toLowerCase().startsWith('bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-
-    const userId = await getUserIdFromBearerToken(authHeader);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid or expired token' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
+    const user = await requireAuth(req);
+    const userId = user.id;
 
     const supabase = getServiceSupabaseClient();
     const newApiKey = generateApiKey();
@@ -81,34 +52,16 @@ export async function POST(req: Request) {
 
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message === 'Unauthorized' ? 401 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
 // DELETE per revocare l'API key
 export async function DELETE(req: Request) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-    if (!authHeader.toLowerCase().startsWith('bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-
-    const userId = await getUserIdFromBearerToken(authHeader);
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid or expired token' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
+    const user = await requireAuth(req);
+    const userId = user.id;
 
     const supabase = getServiceSupabaseClient();
 
@@ -138,6 +91,7 @@ export async function DELETE(req: Request) {
 
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message === 'Unauthorized' ? 401 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

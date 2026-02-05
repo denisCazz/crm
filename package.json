@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
@@ -12,6 +12,7 @@
     "@supabase/supabase-js": "^2.57.4",
     "@upstash/ratelimit": "^2.0.6",
     "@upstash/redis": "^1.35.4",
+    "bcrypt": "^6.0.0",
     "next": "^15.5.9",
     "nodemailer": "^6.9.16",
     "react": "19.1.0",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^20",
     "@types/nodemailer": "^6.4.17",
     "@types/react": "^19",

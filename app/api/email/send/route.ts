@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabaseClient } from '../../../../lib/supabaseServer';
 import { sendEmail } from '../../../../lib/emailSender';
+import { requireAuth } from '../../../../lib/authHelpers';
 
 type SendEmailPayload = {
   client_id: string;
@@ -13,56 +14,15 @@ function renderTemplate(input: string, vars: Record<string, string>): string {
   });
 }
 
-async function getUserIdFromBearerToken(authHeader: string | null): Promise<string | null> {
-  if (!authHeader) return null;
-  const [kind, token] = authHeader.split(' ');
-  if (kind?.toLowerCase() !== 'bearer' || !token) return null;
-
-  const supabase = getServiceSupabaseClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user?.id) return null;
-  return data.user.id;
-}
-
-async function getUserEmailFromToken(authHeader: string | null): Promise<string | null> {
-  if (!authHeader) return null;
-  const [kind, token] = authHeader.split(' ');
-  if (kind?.toLowerCase() !== 'bearer' || !token) return null;
-
-  const supabase = getServiceSupabaseClient();
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data?.user?.email) return null;
-  return data.user.email;
-}
-
 export async function POST(req: Request) {
   const supabase = getServiceSupabaseClient();
 
   let sendId: string | null = null;
 
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized: missing Authorization header (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-    if (!authHeader.toLowerCase().startsWith('bearer ')) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid Authorization scheme (expected: Bearer <token>)' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
-
-    const userId = await getUserIdFromBearerToken(authHeader);
-    const userEmail = await getUserEmailFromToken(authHeader);
-    if (!userId || !userEmail) {
-      return NextResponse.json(
-        { error: 'Unauthorized: invalid or expired token' },
-        { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
-      );
-    }
+    const user = await requireAuth(req);
+    const userId = user.id;
+    const userEmail = user.email;
 
     const body = (await req.json()) as SendEmailPayload;
     const clientId = body.client_id?.trim();
@@ -187,6 +147,7 @@ export async function POST(req: Request) {
 
     if (sendId) {
       try {
+        const supabase = getServiceSupabaseClient();
         await supabase
           .from('email_sends')
           .update({ status: 'failed', error: message })
@@ -196,6 +157,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message === 'Unauthorized' ? 401 : message === 'Forbidden' ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

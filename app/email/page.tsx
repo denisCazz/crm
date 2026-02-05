@@ -8,6 +8,7 @@ import { ToastProvider } from '../../components/Toaster';
 import { EmailGate } from './_components/EmailGate';
 import { AppLayout } from '../../components/layout/AppLayout';
 import { useSupabaseSafe } from '../../lib/supabase';
+import { signOut as authSignOut } from '../../lib/authClient';
 
 function EmailHub() {
   const supabase = useSupabaseSafe();
@@ -18,9 +19,7 @@ function EmailHub() {
         <AppLayout
           user={user}
           onLogout={async () => {
-            if (supabase) {
-              await supabase.auth.signOut();
-            }
+            await authSignOut();
             router.push('/');
           }}
         >

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Autenticazione Bitora CRM</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .box {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .success { background: #d4edda; border-color: #c3e6cb; }
+        .error { background: #f8d7da; border-color: #f5c6cb; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 Test Autenticazione Bitora CRM</h1>
+    
+    <div class="box">
+        <h2>1. Test Registrazione</h2>
+        <input type="email" id="signupEmail" placeholder="Email" value="deniscazzulo@icloud.com" style="width: 300px; padding: 8px;">
+        <input type="password" id="signupPassword" placeholder="Password" value="Juventus3132!!" style="width: 300px; padding: 8px;">
+        <br><br>
+        <button onclick="testSignup()">Test Registrazione</button>
+        <div id="signupResult"></div>
+    </div>
+
+    <div class="box">
+        <h2>2. Test Login</h2>
+        <input type="email" id="loginEmail" placeholder="Email" value="deniscazzulo@icloud.com" style="width: 300px; padding: 8px;">
+        <input type="password" id="loginPassword" placeholder="Password" value="Juventus3132!!" style="width: 300px; padding: 8px;">
+        <br><br>
+        <button onclick="testLogin()">Test Login</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="box">
+        <h2>3. Controlla Sessione</h2>
+        <button onclick="checkSession()">Controlla Sessione</button>
+        <div id="sessionResult"></div>
+    </div>
+
+    <div class="box">
+        <h2>4. Controlla LocalStorage</h2>
+        <button onclick="checkLocalStorage()">Controlla LocalStorage</button>
+        <div id="storageResult"></div>
+    </div>
+
+    <div class="box">
+        <h2>5. Test Debug</h2>
+        <button onclick="testDebug()">Test Debug (verifica password)</button>
+        <div id="debugResult"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+
+        async function testSignup() {
+            const email = document.getElementById('signupEmail').value;
+            const password = document.getElementById('signupPassword').value;
+            const result = document.getElementById('signupResult');
+            
+            result.innerHTML = '<p>⏳ Registrazione in corso...</p>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/signup`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `<div class="success">
+                        <h3>✅ Registrazione OK</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    result.innerHTML = `<div class="error">
+                        <h3>❌ Errore</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">
+                    <h3>❌ Errore di rete</h3>
+                    <pre>${error.message}</pre>
+                    <p>Assicurati che il server sia in esecuzione su http://localhost:3000</p>
+                </div>`;
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const result = document.getElementById('loginResult');
+            
+            result.innerHTML = '<p>⏳ Login in corso...</p>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/signin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.session) {
+                    // Salva in localStorage
+                    localStorage.setItem('bitora_session', JSON.stringify(data.session));
+                    localStorage.setItem('bitora_user', JSON.stringify(data.user));
+                    
+                    result.innerHTML = `<div class="success">
+                        <h3>✅ Login OK!</h3>
+                        <p>Token salvato in localStorage</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    result.innerHTML = `<div class="error">
+                        <h3>❌ Login Fallito</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">
+                    <h3>❌ Errore di rete</h3>
+                    <pre>${error.message}</pre>
+                </div>`;
+            }
+        }
+
+        async function checkSession() {
+            const result = document.getElementById('sessionResult');
+            const session = localStorage.getItem('bitora_session');
+            
+            if (!session) {
+                result.innerHTML = '<div class="error"><h3>❌ Nessuna sessione trovata</h3><p>Fai prima il login!</p></div>';
+                return;
+            }
+            
+            result.innerHTML = '<p>⏳ Verifica sessione...</p>';
+            
+            try {
+                const sessionData = JSON.parse(session);
+                const response = await fetch(`${API_URL}/api/auth/session`, {
+                    headers: {
+                        'Authorization': `Bearer ${sessionData.token}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `<div class="success">
+                        <h3>✅ Sessione Valida!</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    result.innerHTML = `<div class="error">
+                        <h3>❌ Sessione Non Valida</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">
+                    <h3>❌ Errore</h3>
+                    <pre>${error.message}</pre>
+                </div>`;
+            }
+        }
+
+        function checkLocalStorage() {
+            const result = document.getElementById('storageResult');
+            const session = localStorage.getItem('bitora_session');
+            const user = localStorage.getItem('bitora_user');
+            
+            if (!session && !user) {
+                result.innerHTML = '<div class="error"><h3>❌ LocalStorage Vuoto</h3><p>Nessuna sessione salvata</p></div>';
+            } else {
+                result.innerHTML = `<div class="success">
+                    <h3>✅ Dati LocalStorage</h3>
+                    <h4>Sessione:</h4>
+                    <pre>${session || 'null'}</pre>
+                    <h4>Utente:</h4>
+                    <pre>${user || 'null'}</pre>
+                </div>`;
+            }
+        }
+
+        async function testDebug() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const result = document.getElementById('debugResult');
+            
+            result.innerHTML = '<p>⏳ Test debug...</p>';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/auth/debug`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const match = data.debug.passwordMatch;
+                    result.innerHTML = `<div class="${match ? 'success' : 'error'}">
+                        <h3>${match ? '✅' : '❌'} Password ${match ? 'Corretta' : 'Errata'}</h3>
+                        <pre>${JSON.stringify(data.debug, null, 2)}</pre>
+                    </div>`;
+                } else {
+                    result.innerHTML = `<div class="error">
+                        <h3>❌ Errore</h3>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                        <p><strong>Probabilmente le tabelle SQL non sono state create!</strong></p>
+                    </div>`;
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">
+                    <h3>❌ Errore</h3>
+                    <pre>${error.message}</pre>
+                </div>`;
+            }
+        }
+    </script>
+</body>
+</html>

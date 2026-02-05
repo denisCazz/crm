@@ -10,6 +10,7 @@ export const metadata = {
     icon: [{ url: "/CRM.ico" }],
     shortcut: ["/CRM.ico"],
   },
+  manifest: "/manifest.json",
 };
 
 

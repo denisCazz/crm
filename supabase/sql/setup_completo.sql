@@ -1,20 +1,17 @@
--- Bitora CRM - Setup completo Supabase (idempotente)
---
--- Come usarlo:
--- 1) Apri Supabase Dashboard → SQL Editor
--- 2) Incolla ed esegui questo file
---
--- Crea/aggiorna:
--- - public.clients (CRM)
--- - public.admin_users, public.licenses (+ view) (licenze)
--- - public.app_settings (brand + SMTP cifrato)
--- - public.email_templates
--- - public.email_sends (log invii)
--- - trigger set_updated_at + RLS + policy principali
+-- ============================================
+-- Bitora CRM - Setup Completo Database
+-- ============================================
+-- Esegui questo script UNICO su Supabase SQL Editor
+-- Crea tutte le tabelle nell'ordine corretto
+-- ============================================
 
 BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ============================================
+-- PARTE 1: AUTENTICAZIONE (DEVE ESSERE PRIMA!)
+-- ============================================
 
 -- Helper: updated_at
 CREATE OR REPLACE FUNCTION public.set_updated_at()
@@ -26,10 +23,168 @@ BEGIN
 END;
 $$;
 
--- =====================
--- CLIENTS (CRM)
--- =====================
+-- Tabella USERS (sostituisce auth.users)
+CREATE TABLE IF NOT EXISTS public.users (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email text UNIQUE NOT NULL,
+  email_verified boolean NOT NULL DEFAULT true,
+  password_hash text NOT NULL,
+  
+  -- Metadata utente
+  first_name text,
+  last_name text,
+  user_metadata jsonb DEFAULT '{}'::jsonb,
+  app_metadata jsonb DEFAULT '{}'::jsonb,
+  
+  -- Tracking
+  last_sign_in_at timestamptz,
+  confirmed_at timestamptz DEFAULT timezone('utc', now()),
+  
+  -- Password reset
+  recovery_token text UNIQUE,
+  recovery_sent_at timestamptz,
+  
+  -- Account status
+  is_active boolean NOT NULL DEFAULT true,
+  banned_until timestamptz,
+  
+  created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
+  updated_at timestamptz NOT NULL DEFAULT timezone('utc', now())
+);
 
+CREATE INDEX IF NOT EXISTS users_email_idx ON public.users(email);
+CREATE INDEX IF NOT EXISTS users_recovery_token_idx ON public.users(recovery_token) WHERE recovery_token IS NOT NULL;
+
+DROP TRIGGER IF EXISTS users_set_updated_at ON public.users;
+CREATE TRIGGER users_set_updated_at
+BEFORE UPDATE ON public.users
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- Tabella SESSIONS
+CREATE TABLE IF NOT EXISTS public.sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  token text UNIQUE NOT NULL,
+  refresh_token text UNIQUE,
+  
+  user_agent text,
+  ip_address inet,
+  
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
+  last_activity_at timestamptz NOT NULL DEFAULT timezone('utc', now())
+);
+
+CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON public.sessions(user_id);
+CREATE INDEX IF NOT EXISTS sessions_token_idx ON public.sessions(token);
+CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON public.sessions(expires_at);
+
+-- Tabella AUDIT LOG
+CREATE TABLE IF NOT EXISTS public.auth_audit_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES public.users(id) ON DELETE SET NULL,
+  event_type text NOT NULL,
+  ip_address inet,
+  user_agent text,
+  metadata jsonb,
+  created_at timestamptz NOT NULL DEFAULT timezone('utc', now())
+);
+
+CREATE INDEX IF NOT EXISTS auth_audit_log_user_id_idx ON public.auth_audit_log(user_id);
+CREATE INDEX IF NOT EXISTS auth_audit_log_created_at_idx ON public.auth_audit_log(created_at DESC);
+
+-- Funzioni helper
+CREATE OR REPLACE FUNCTION public.current_user_id()
+RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN current_setting('app.current_user_id', true)::uuid;
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_current_user_admin()
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+DECLARE
+  uid uuid;
+BEGIN
+  uid := public.current_user_id();
+  IF uid IS NULL THEN
+    RETURN false;
+  END IF;
+  
+  RETURN EXISTS (
+    SELECT 1 FROM public.admin_users WHERE user_id = uid
+  );
+END;
+$$;
+
+-- RLS per autenticazione
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auth_audit_log ENABLE ROW LEVEL SECURITY;
+
+-- Policy per users (idempotente)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='users'
+      AND policyname='Service role full access users'
+  ) THEN
+    DROP POLICY "Service role full access users" ON public.users;
+  END IF;
+
+  CREATE POLICY "Service role full access users"
+  ON public.users FOR ALL
+  USING (current_setting('role') = 'service_role')
+  WITH CHECK (current_setting('role') = 'service_role');
+END$$;
+
+-- Policy per sessions (idempotente)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='sessions'
+      AND policyname='Service role full access sessions'
+  ) THEN
+    DROP POLICY "Service role full access sessions" ON public.sessions;
+  END IF;
+
+  CREATE POLICY "Service role full access sessions"
+  ON public.sessions FOR ALL
+  USING (current_setting('role') = 'service_role')
+  WITH CHECK (current_setting('role') = 'service_role');
+END$$;
+
+-- Policy per audit log (idempotente)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='auth_audit_log'
+      AND policyname='Service role full access audit'
+  ) THEN
+    DROP POLICY "Service role full access audit" ON public.auth_audit_log;
+  END IF;
+
+  CREATE POLICY "Service role full access audit"
+  ON public.auth_audit_log FOR ALL
+  USING (current_setting('role') = 'service_role')
+  WITH CHECK (current_setting('role') = 'service_role');
+END$$;
+
+-- ============================================
+-- PARTE 2: TABELLE PRINCIPALI
+-- ============================================
+
+-- CLIENTS
 CREATE TABLE IF NOT EXISTS public.clients (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -48,16 +203,12 @@ CREATE TABLE IF NOT EXISTS public.clients (
   status text NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','converted','archived')),
   first_contacted_at timestamptz,
 
+  lead_source text NOT NULL DEFAULT 'manual',
+  contact_request text,
+
   created_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
   updated_at timestamptz NOT NULL DEFAULT timezone('utc', now())
 );
-
--- Estensioni compatibili per lead in ingresso (newsletter/contatti)
-ALTER TABLE public.clients
-  ADD COLUMN IF NOT EXISTS lead_source text NOT NULL DEFAULT 'manual';
-
-ALTER TABLE public.clients
-  ADD COLUMN IF NOT EXISTS contact_request text;
 
 CREATE INDEX IF NOT EXISTS clients_owner_id_idx ON public.clients(owner_id);
 CREATE INDEX IF NOT EXISTS clients_owner_status_idx ON public.clients(owner_id, status);
@@ -70,7 +221,6 @@ FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 
--- Owner CRUD sui propri clienti
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -79,22 +229,53 @@ BEGIN
       AND policyname='Owners manage clients'
   ) THEN
     CREATE POLICY "Owners manage clients"
-    ON public.clients
-    FOR ALL
+    ON public.clients FOR ALL
     USING (current_setting('role') = 'service_role' OR owner_id = public.current_user_id())
     WITH CHECK (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 END$$;
 
--- =====================
--- ADMIN + LICENSES
--- =====================
-
+-- ADMIN USERS
 CREATE TABLE IF NOT EXISTS public.admin_users (
   user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT timezone('utc', now())
 );
 
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='admin_users'
+      AND policyname='Admin can see admin list'
+  ) THEN
+    DROP POLICY "Admin can see admin list" ON public.admin_users;
+  END IF;
+
+  CREATE POLICY "Admin can see admin list"
+  ON public.admin_users FOR SELECT
+  USING (
+    current_setting('role') = 'service_role'
+    OR user_id = public.current_user_id()
+  );
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='admin_users'
+      AND policyname='Service role manages admin list'
+  ) THEN
+    CREATE POLICY "Service role manages admin list"
+    ON public.admin_users FOR ALL
+    USING (current_setting('role') = 'service_role')
+    WITH CHECK (current_setting('role') = 'service_role');
+  END IF;
+END$$;
+
+-- LICENSES
 CREATE TABLE IF NOT EXISTS public.licenses (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -114,46 +295,8 @@ CREATE TRIGGER licenses_set_updated_at
 BEFORE UPDATE ON public.licenses
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.licenses ENABLE ROW LEVEL SECURITY;
 
--- Admin list: lettura solo service_role o self
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='admin_users'
-      AND policyname='Admin can see admin list'
-  ) THEN
-    EXECUTE 'DROP POLICY "Admin can see admin list" ON public.admin_users';
-  END IF;
-
-  CREATE POLICY "Admin can see admin list"
-  ON public.admin_users
-  FOR SELECT
-  USING (
-    current_setting('role') = 'service_role'
-    OR user_id = public.current_user_id()
-  );
-END$$;
-
--- Admin list: gestione solo service_role
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname='public' AND tablename='admin_users'
-      AND policyname='Service role manages admin list'
-  ) THEN
-    CREATE POLICY "Service role manages admin list"
-    ON public.admin_users
-    FOR ALL
-    USING (current_setting('role') = 'service_role')
-    WITH CHECK (current_setting('role') = 'service_role');
-  END IF;
-END$$;
-
--- Licenses: owner legge la propria
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -162,13 +305,11 @@ BEGIN
       AND policyname='Owners can read their license'
   ) THEN
     CREATE POLICY "Owners can read their license"
-    ON public.licenses
-    FOR SELECT
+    ON public.licenses FOR SELECT
     USING (current_setting('role') = 'service_role' OR user_id = public.current_user_id());
   END IF;
 END$$;
 
--- Licenses: admin gestisce (via admin_users)
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -177,8 +318,7 @@ BEGIN
       AND policyname='Admins manage licenses'
   ) THEN
     CREATE POLICY "Admins manage licenses"
-    ON public.licenses
-    FOR ALL
+    ON public.licenses FOR ALL
     USING (
       current_setting('role') = 'service_role'
       OR public.is_current_user_admin()
@@ -190,7 +330,6 @@ BEGIN
   END IF;
 END$$;
 
--- Clients: admin può leggere tutti
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -199,8 +338,7 @@ BEGIN
       AND policyname='Admins read clients'
   ) THEN
     CREATE POLICY "Admins read clients"
-    ON public.clients
-    FOR SELECT
+    ON public.clients FOR SELECT
     USING (
       owner_id = public.current_user_id()
       OR current_setting('role') = 'service_role'
@@ -209,28 +347,7 @@ BEGIN
   END IF;
 END$$;
 
--- View: licenza + dati owner (se client esiste)
-CREATE OR REPLACE VIEW public.license_with_owner AS
-SELECT
-  l.id,
-  l.user_id,
-  l.status,
-  l.expires_at,
-  l.plan,
-  l.metadata,
-  l.created_at,
-  l.updated_at,
-  c.first_name,
-  c.last_name,
-  c.email,
-  c.phone
-FROM public.licenses l
-LEFT JOIN public.clients c ON c.owner_id = l.user_id;
-
--- =====================
--- APP SETTINGS (brand + SMTP)
--- =====================
-
+-- APP SETTINGS
 CREATE TABLE IF NOT EXISTS public.app_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -256,28 +373,7 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
   CONSTRAINT app_settings_owner_unique UNIQUE (owner_id)
 );
 
--- Backfill/compat: if table already existed without api_key, add it.
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema='public' AND table_name='app_settings'
-  ) THEN
-    IF NOT EXISTS (
-      SELECT 1
-      FROM information_schema.columns
-      WHERE table_schema='public' AND table_name='app_settings' AND column_name='api_key'
-    ) THEN
-      ALTER TABLE public.app_settings
-        ADD COLUMN api_key text UNIQUE;
-    END IF;
-  END IF;
-END$$;
-
 CREATE INDEX IF NOT EXISTS app_settings_owner_idx ON public.app_settings(owner_id);
-
--- Lookup veloce per /api/leads (X-API-Key)
 CREATE INDEX IF NOT EXISTS app_settings_api_key_idx ON public.app_settings(api_key) WHERE api_key IS NOT NULL;
 
 DROP TRIGGER IF EXISTS app_settings_set_updated_at ON public.app_settings;
@@ -295,17 +391,13 @@ BEGIN
       AND policyname='Owners manage app settings'
   ) THEN
     CREATE POLICY "Owners manage app settings"
-    ON public.app_settings
-    FOR ALL
+    ON public.app_settings FOR ALL
     USING (current_setting('role') = 'service_role' OR owner_id = public.current_user_id())
     WITH CHECK (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 END$$;
 
--- =====================
 -- EMAIL TEMPLATES
--- =====================
-
 CREATE TABLE IF NOT EXISTS public.email_templates (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -334,17 +426,13 @@ BEGIN
       AND policyname='Owners manage email templates'
   ) THEN
     CREATE POLICY "Owners manage email templates"
-    ON public.email_templates
-    FOR ALL
+    ON public.email_templates FOR ALL
     USING (current_setting('role') = 'service_role' OR owner_id = public.current_user_id())
     WITH CHECK (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 END$$;
 
--- =====================
--- EMAIL SENDS (LOG)
--- =====================
-
+-- EMAIL SENDS
 CREATE TABLE IF NOT EXISTS public.email_sends (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
@@ -370,8 +458,7 @@ BEGIN
       AND policyname='Owners read email sends'
   ) THEN
     CREATE POLICY "Owners read email sends"
-    ON public.email_sends
-    FOR SELECT
+    ON public.email_sends FOR SELECT
     USING (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 
@@ -381,8 +468,7 @@ BEGIN
       AND policyname='Owners insert email sends'
   ) THEN
     CREATE POLICY "Owners insert email sends"
-    ON public.email_sends
-    FOR INSERT
+    ON public.email_sends FOR INSERT
     WITH CHECK (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 
@@ -392,11 +478,37 @@ BEGIN
       AND policyname='Owners update their email sends'
   ) THEN
     CREATE POLICY "Owners update their email sends"
-    ON public.email_sends
-    FOR UPDATE
+    ON public.email_sends FOR UPDATE
     USING (current_setting('role') = 'service_role' OR owner_id = public.current_user_id())
     WITH CHECK (current_setting('role') = 'service_role' OR owner_id = public.current_user_id());
   END IF;
 END$$;
 
+-- VIEW
+CREATE OR REPLACE VIEW public.license_with_owner AS
+SELECT
+  l.id,
+  l.user_id,
+  l.status,
+  l.expires_at,
+  l.plan,
+  l.metadata,
+  l.created_at,
+  l.updated_at,
+  c.first_name,
+  c.last_name,
+  c.email,
+  c.phone
+FROM public.licenses l
+LEFT JOIN public.clients c ON c.owner_id = l.user_id;
+
 COMMIT;
+
+-- ============================================
+-- VERIFICA FINALE
+-- ============================================
+-- Esegui questa query per verificare che tutto sia OK:
+-- SELECT table_name FROM information_schema.tables 
+-- WHERE table_schema = 'public' 
+-- AND table_name IN ('users', 'sessions', 'clients', 'licenses', 'app_settings', 'email_templates', 'email_sends');
+-- ============================================

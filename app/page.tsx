@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User } from "@supabase/supabase-js";
 
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
@@ -15,6 +14,8 @@ import { NewsletterModal } from "../components/NewsletterModal";
 import { normalizeClient } from "../lib/normalizeClient";
 import { AppLayout } from "../components/layout/AppLayout";
 import { getCachedBrand, setCachedBrand } from "../lib/brandCache";
+import { verifySession, signOut as authSignOut, getStoredSession, getStoredUser } from "../lib/authClient";
+import type { User } from "../lib/auth";
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? "")
   .split(",")
@@ -43,8 +44,16 @@ function adminBypassLicense(user: User): License {
 
 function getDisplayName(user: User | null): string {
   const meta = ((user?.user_metadata ?? {}) as Record<string, unknown>) || {};
+  
+  // Prova first_name da metadata
   const firstName = typeof meta.first_name === 'string' ? meta.first_name.trim() : '';
   if (firstName) return firstName;
+  
+  // Prova first_name diretto (nuovo schema)
+  if (user && 'first_name' in user && typeof user.first_name === 'string' && user.first_name) {
+    return user.first_name;
+  }
+  
   if (!user?.email) return "Cliente";
   const localPart = user.email.split("@")[0] ?? "";
   if (!localPart) return "Cliente";
@@ -82,26 +91,20 @@ function MainApp() {
   const openNewsletterModal = useCallback(() => setIsNewsletterModalOpen(true), []);
   const closeNewsletterModal = useCallback(() => setIsNewsletterModalOpen(false), []);
 
-  const handleNewClient = useCallback(() => {
-    newClientButtonRef.current?.openModal();
-  }, []);
-
   const handleSendNewsletter = useCallback(async (templateId: string) => {
-    if (!supabase) return;
+    const session = getStoredSession();
+    if (!session) {
+      push("error", "Sessione scaduta. Ricarica la pagina.");
+      return;
+    }
     
     setSendingNewsletter(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.access_token) {
-        push("error", "Sessione scaduta. Ricarica la pagina.");
-        return;
-      }
-
       const res = await fetch("/api/email/newsletter", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.session.access_token}`,
+          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({ template_id: templateId }),
       });
@@ -120,7 +123,7 @@ function MainApp() {
     } finally {
       setSendingNewsletter(false);
     }
-  }, [supabase, push]);
+  }, [push]);
 
   const handleClientCreated = useCallback((client: Client) => {
     const normalized = normalizeClient(client);
@@ -135,7 +138,7 @@ function MainApp() {
 
   // Fetch brand settings
   useEffect(() => {
-    if (!supabase || !user) return;
+    if (!user) return;
 
     // Load from cache first to avoid a call every time
     const cached = getCachedBrand(user.id);
@@ -145,12 +148,12 @@ function MainApp() {
     }
 
     const fetchSettings = async () => {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session?.access_token) return;
+      const session = getStoredSession();
+      if (!session) return;
 
       try {
         const res = await fetch("/api/settings", {
-          headers: { Authorization: `Bearer ${session.session.access_token}` },
+          headers: { Authorization: `Bearer ${session.token}` },
         });
         const json = await res.json().catch(() => null);
 
@@ -169,28 +172,28 @@ function MainApp() {
     };
 
     fetchSettings();
-  }, [supabase, user]);
+  }, [user]);
 
+  // Verifica autenticazione al mount
   useEffect(() => {
-    if (!supabase) {
+    const checkAuth = async () => {
+      const result = await verifySession();
+      if (result) {
+        setUser(result.user);
+      } else {
+        // Prova a ottenere user dal localStorage (per evitare flicker)
+        const storedUser = getStoredUser();
+        if (storedUser) {
+          setUser(storedUser);
+        }
+      }
       setLoading(false);
-      return;
-    }
-
-    supabase.auth.getSession().then((response) => {
-      setUser(response.data?.session?.user ?? null);
-      setLoading(false);
-    });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((_, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-
-    return () => {
-      subscription?.subscription.unsubscribe();
     };
-  }, [supabase]);
 
+    checkAuth();
+  }, []);
+
+  // Verifica licenza
   useEffect(() => {
     if (!supabase || !user) {
       setLicenseState((prev) => (prev.status === "idle" ? prev : { status: "idle" }));
@@ -260,11 +263,11 @@ function MainApp() {
   const isLicenseActive = useMemo(() => licenseState.status === "active", [licenseState]);
 
   const handleLogout = useCallback(async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    await authSignOut();
+    setUser(null);
     push("success", "Logout effettuato con successo!");
     router.push("/");
-  }, [supabase, push, router]);
+  }, [push, router]);
 
   const exportToCSV = useCallback(() => {
     if (rows.length === 0) return;

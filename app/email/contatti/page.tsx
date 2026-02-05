@@ -10,6 +10,8 @@ import { useSupabaseSafe } from '../../../lib/supabase';
 import { normalizeClient } from '../../../lib/normalizeClient';
 import type { Client, EmailTemplate } from '../../../types';
 import { AppLayout } from '../../../components/layout/AppLayout';
+import { getStoredSession } from '../../../lib/authClient';
+import { signOut } from '../../../lib/authClient';
 
 function renderTemplate(input: string, vars: Record<string, string>): string {
   return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? '');
@@ -149,8 +151,8 @@ function ContattiInner({ userId }: { userId: string }) {
       return;
     }
 
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+      const session = getStoredSession();
+      const token = session?.token;
     if (!token) {
       push('error', 'Sessione non valida.');
       return;
@@ -626,7 +628,7 @@ function ContattiPageInner() {
           user={user}
           onLogout={async () => {
             if (supabase) {
-              await supabase.auth.signOut();
+              await signOut();
             }
             router.push('/');
           }}

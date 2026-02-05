@@ -7,11 +7,11 @@ import React, {
   useState,
 } from 'react';
 import Link from 'next/link';
-import { User } from '@supabase/supabase-js';
-
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
 import { useSupabaseSafe } from '../../lib/supabase';
+import { useAuth } from '../../lib/useAuth';
+import type { User } from '../../lib/auth';
 import { Client, License } from '../../types';
 import { normalizeClient } from '../../lib/normalizeClient';
 
@@ -70,9 +70,12 @@ function isLicenseCurrentlyActive(license: License): boolean {
 function AdminApp() {
   const supabase = useSupabaseSafe();
   const { push } = useToast();
+  
+  // Hook deve essere chiamato al livello superiore
+  const { user: authUser, loading: authLoading } = useAuth();
+  
   const [isMounted, setIsMounted] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [adminStatus, setAdminStatus] = useState<'unknown' | 'checking' | 'granted' | 'denied'>('unknown');
   const [clients, setClients] = useState<Client[]>([]);
   const [licenses, setLicenses] = useState<License[]>([]);
@@ -89,25 +92,10 @@ function AdminApp() {
     setIsMounted(true);
   }, []);
 
+  // Aggiorna user quando authUser cambia
   useEffect(() => {
-    if (!supabase) {
-      setAuthLoading(false);
-      return;
-    }
-
-    supabase.auth.getSession().then((response) => {
-      setUser(response.data?.session?.user ?? null);
-      setAuthLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_, newSession) => {
-      setUser(newSession?.user ?? null);
-    });
-
-    return () => {
-      listener?.subscription.unsubscribe();
-    };
-  }, [supabase]);
+    setUser(authUser);
+  }, [authUser]);
 
   useEffect(() => {
     if (!user) {

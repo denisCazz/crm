@@ -1,37 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Usa service role per accedere a auth.users
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { getServiceSupabaseClient } from '../../../lib/supabaseServer';
+import { requireAdmin } from '../../../lib/authHelpers';
+import { listUsers } from '../../../lib/auth';
 
 // Lista delle email admin
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
 
 export async function GET(request: Request) {
   try {
-    // Verifica che chi chiama sia admin (tramite Bearer token)
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Token mancante' }, { status: 401 });
-    }
+    // Verifica che chi chiama sia admin
+    const user = await requireAdmin(request, ADMIN_EMAILS);
 
-    const token = authHeader.slice(7);
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-    
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Utente non autenticato' }, { status: 401 });
-    }
-
-    // Verifica che sia admin
-    if (!ADMIN_EMAILS.includes(user.email?.toLowerCase() ?? '')) {
-      return NextResponse.json({ error: 'Accesso non autorizzato' }, { status: 403 });
-    }
+    const supabase = getServiceSupabaseClient();
 
     // Fetch tutte le licenze
-    const { data: licenses, error: licensesError } = await supabaseAdmin
+    const { data: licenses, error: licensesError } = await supabase
       .from('licenses')
       .select('*')
       .order('created_at', { ascending: false });
@@ -40,12 +23,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: licensesError.message }, { status: 500 });
     }
 
-    // Fetch tutti gli utenti da auth.users
-    const { data: { users }, error: usersError } = await supabaseAdmin.auth.admin.listUsers();
-
-    if (usersError) {
-      return NextResponse.json({ error: usersError.message }, { status: 500 });
-    }
+    // Fetch tutti gli utenti dalla tabella custom
+    const users = await listUsers();
 
     // Crea mappa user_id -> email
     const userEmailMap = new Map<string, string>();
@@ -84,6 +63,8 @@ export async function GET(request: Request) {
     });
   } catch (e) {
     console.error('Errore API users:', e);
-    return NextResponse.json({ error: 'Errore interno del server' }, { status: 500 });
+    const message = e instanceof Error ? e.message : 'Errore interno del server';
+    const status = message === 'Unauthorized' ? 401 : message === 'Forbidden' ? 403 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
