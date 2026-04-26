@@ -1,17 +1,21 @@
 # ─── Stage 1: install dependencies ──────────────────────────────────────────
-FROM node:20-alpine AS deps
+# node:20-slim is Debian-based — avoids Alpine/musl incompatibilities
+# with native modules (bcrypt, etc.)
+FROM node:20-slim AS deps
 
-# bcrypt requires native compilation tools
-RUN apk add --no-cache libc6-compat python3 make g++
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --frozen-lockfile
+# Fallback to npm install if lock file is missing
+RUN npm ci --frozen-lockfile || npm install
 
 
 # ─── Stage 2: build ──────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -19,22 +23,25 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 
 RUN npm run build
 
+# Hard-fail if standalone output was not generated
+RUN test -f .next/standalone/server.js || \
+    (echo "ERROR: .next/standalone/server.js not found. Make sure next.config.ts has output:'standalone'" && exit 1)
+
 
 # ─── Stage 3: production runner ──────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 
-# Install curl for the healthcheck (wget has limitations in Alpine)
-RUN apk add --no-cache curl
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Port 3000 — Coolify's Traefik handles 80/443 → 3000 externally.
-# Set "Port" to 3000 in the Coolify resource settings.
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
@@ -42,8 +49,8 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
-# Copy standalone build
-COPY --from=builder /app/public ./public
+# Copy standalone build (everything needed to run Next.js)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
@@ -52,13 +59,14 @@ USER nextjs
 EXPOSE 3000
 
 # ─── Healthcheck ─────────────────────────────────────────────────────────────
-# Uses curl -f (fails on HTTP 4xx/5xx) against /api/health which returns 200.
-# --start-period=60s gives Next.js time to boot before Coolify checks begin.
+# Coolify overrides interval to ~5s regardless of Dockerfile settings.
+# Using --retries=10 gives the app ~50s to become healthy.
+# /api/health always returns 200 {"status":"ok"}.
 HEALTHCHECK \
-  --interval=30s \
-  --timeout=10s \
-  --start-period=60s \
-  --retries=3 \
+  --interval=5s \
+  --timeout=5s \
+  --start-period=30s \
+  --retries=10 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
 CMD ["node", "server.js"]
