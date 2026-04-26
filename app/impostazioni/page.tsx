@@ -5,76 +5,23 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
 import { signOut as authSignOut, getStoredSession } from '../../lib/authClient';
 import type { User } from '../../lib/auth';
 import { AppLayout } from '../../components/layout/AppLayout';
-import type { AppSettings, EmailTemplate, License } from '../../types';
+import type { AppSettings, EmailTemplate } from '../../types';
+import { useLicense, isAdminUser, type LicenseState } from '../../lib/useLicense';
 
-const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter((email) => email.length > 0);
-
-function isAdminUser(user: User | null): boolean {
-  if (!user) return false;
-  const envAdmin = Boolean(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
-  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
-  const metadataAdmin = userMetadata['is_admin'] === true || appMetadata['role'] === 'admin';
-  return envAdmin || metadataAdmin;
-}
-
-function adminBypassLicense(user: User): License {
-  return {
-    id: 'admin-bypass',
-    user_id: user.id,
-    status: 'active',
-    expires_at: null,
-    plan: 'admin',
-    created_at: new Date().toISOString(),
-  } as License;
-}
-
-type LicenseState =
-  | { status: 'idle' }
-  | { status: 'checking' }
-  | { status: 'active'; license: License }
-  | { status: 'inactive'; reason: string }
-  | { status: 'error'; message: string };
-
-function isLicenseValid(data: License | null): { ok: true } | { ok: false; reason: string } {
-  if (!data) {
-    return { ok: false, reason: "Non è stata trovata alcuna licenza attiva associata a questo account." };
-  }
-
-  const now = Date.now();
-  const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : null;
-  const isExpired = typeof expiresAt === 'number' && !Number.isNaN(expiresAt) && expiresAt < now;
-  const isDisabled = data.status === 'inactive' || data.status === 'expired';
-
-  if (isExpired || isDisabled) {
-    return {
-      ok: false,
-      reason: isExpired ? 'La licenza è scaduta.' : 'La licenza risulta inattiva.',
-    };
-  }
-
-  return { ok: true };
-}
 
 function SettingsApp() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   const { push } = useToast();
   
-  // Hook deve essere chiamato al livello superiore
   const { user: authUser, loading: authLoading } = useAuth();
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [licenseState, setLicenseState] = useState<LicenseState>({ status: 'idle' });
+  const licenseState: LicenseState = useLicense(user);
 
   const [settings, setSettings] = useState<Partial<AppSettings>>({
     brand_name: '',
@@ -154,10 +101,9 @@ function SettingsApp() {
   }, []);
 
   const handleLogout = useCallback(async () => {
-    if (!supabase) return;
     await authSignOut();
     router.push('/');
-  }, [supabase, router]);
+  }, [router]);
 
   // Aggiorna user e loading quando authUser cambia
   useEffect(() => {
@@ -165,61 +111,14 @@ function SettingsApp() {
     setLoading(authLoading);
   }, [authUser, authLoading]);
 
-  useEffect(() => {
-    if (!supabase || !user) {
-      setLicenseState((prev) => (prev.status === 'idle' ? prev : { status: 'idle' }));
-      return;
-    }
-
-    if (isAdminUser(user)) {
-      setLicenseState({ status: 'active', license: adminBypassLicense(user) });
-      return;
-    }
-
-    let cancelled = false;
-    setLicenseState({ status: 'checking' });
-
-    supabase
-      .from('licenses')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('expires_at', { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          setLicenseState({ status: 'error', message: error.message });
-          return;
-        }
-
-        const verdict = isLicenseValid((data ?? null) as License | null);
-        if (!verdict.ok) {
-          setLicenseState({ status: 'inactive', reason: verdict.reason });
-          return;
-        }
-
-        setLicenseState({ status: 'active', license: data as License });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, user]);
-
   const canUse = useMemo(() => licenseState.status === 'active', [licenseState.status]);
 
   const fetchSettings = useCallback(async () => {
-    if (!supabase) return;
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+    const session = getStoredSession();
+    const token = session?.token;
     if (!token) return;
 
-    const res = await fetch('/api/settings', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const res = await fetch('/api/settings', { headers: { Authorization: `Bearer ${token}` } });
 
     const json = (await res.json()) as { settings: AppSettings | null; error?: string };
     if (!res.ok) {
@@ -241,22 +140,22 @@ function SettingsApp() {
         api_key: json.settings.api_key ?? null,
       });
     }
-  }, [supabase]);
+  }, []);
 
   const fetchTemplates = useCallback(async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from('email_templates')
-      .select('*')
-      .order('updated_at', { ascending: false });
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) return;
 
-    if (error) throw error;
-    setTemplates((data ?? []) as EmailTemplate[]);
-  }, [supabase]);
+    const res = await fetch('/api/email/templates', { headers: { Authorization: `Bearer ${token}` } });
+    const json = (await res.json()) as { templates?: EmailTemplate[]; error?: string };
+    if (!res.ok) throw new Error(json.error ?? 'Errore caricamento template');
+    setTemplates(json.templates ?? []);
+  }, []);
 
   // Fetch utenti con licenze (solo admin)
   const fetchUserLicenses = useCallback(async () => {
-    if (!supabase || !user || !isAdminUser(user)) return;
+    if (!user || !isAdminUser(user)) return;
     
     setLoadingUsers(true);
     try {
@@ -287,10 +186,10 @@ function SettingsApp() {
     } finally {
       setLoadingUsers(false);
     }
-  }, [supabase, user, push]);
+  }, [user, push]);
 
   useEffect(() => {
-    if (!supabase || !user || !canUse) return;
+    if (!user || !canUse) return;
 
     let cancelled = false;
     (async () => {
@@ -309,12 +208,11 @@ function SettingsApp() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, user, canUse, fetchSettings, fetchTemplates, fetchUserLicenses, push]);
+  }, [user, canUse, fetchSettings, fetchTemplates, fetchUserLicenses, push]);
 
   const handleSaveSettings = useCallback(async () => {
-    if (!supabase) return;
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+    const session = getStoredSession();
+    const token = session?.token;
     if (!token) return;
 
     setSettingsSaving(true);
@@ -344,13 +242,12 @@ function SettingsApp() {
     } finally {
       setSettingsSaving(false);
     }
-  }, [supabase, settings, smtpPassword, fetchSettings, push]);
+  }, [settings, smtpPassword, fetchSettings, push]);
 
   // Genera nuova API key
   const handleGenerateApiKey = useCallback(async () => {
-    if (!supabase) return;
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+    const session = getStoredSession();
+    const token = session?.token;
     if (!token) return;
 
     setApiKeyGenerating(true);
@@ -371,15 +268,14 @@ function SettingsApp() {
     } finally {
       setApiKeyGenerating(false);
     }
-  }, [supabase, push]);
+  }, [push]);
 
   // Revoca API key
   const handleRevokeApiKey = useCallback(async () => {
-    if (!supabase) return;
     if (!confirm('Sei sicuro di voler revocare l\'API key? Le integrazioni esterne smetteranno di funzionare.')) return;
 
-    const { data: session } = await supabase.auth.getSession();
-    const token = session.session?.access_token;
+    const session = getStoredSession();
+    const token = session?.token;
     if (!token) return;
 
     try {
@@ -397,31 +293,41 @@ function SettingsApp() {
     } catch (e: unknown) {
       push('error', e instanceof Error ? e.message : String(e));
     }
-  }, [supabase, push]);
+  }, [push]);
 
   const handleSaveTemplate = useCallback(async () => {
-    if (!supabase) return;
-
     if (!templateForm.name.trim() || !templateForm.subject.trim() || !templateForm.body_html.trim()) {
       push('error', 'Compila nome, subject e body HTML.');
       return;
     }
 
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) { push('error', 'Sessione non valida.'); return; }
+
     setTemplateSaving(true);
     try {
-      const payload: Record<string, unknown> = {
+      const payload = {
         name: templateForm.name.trim(),
         subject: templateForm.subject,
         body_html: templateForm.body_html,
         body_text: templateForm.body_text.trim() ? templateForm.body_text : null,
       };
 
-      const q = templateForm.id
-        ? supabase.from('email_templates').update(payload).eq('id', templateForm.id)
-        : supabase.from('email_templates').insert(payload);
+      const res = templateForm.id
+        ? await fetch(`/api/email/templates/${templateForm.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/email/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
 
-      const { error } = await q;
-      if (error) throw error;
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore salvataggio');
 
       push('success', templateForm.id ? 'Template aggiornato.' : 'Template creato.');
       setTemplateForm({ id: '', name: '', subject: '', body_html: '', body_text: '' });
@@ -431,7 +337,7 @@ function SettingsApp() {
     } finally {
       setTemplateSaving(false);
     }
-  }, [supabase, templateForm, fetchTemplates, push]);
+  }, [templateForm, fetchTemplates, push]);
 
   const handleEditTemplate = useCallback((tpl: EmailTemplate) => {
     setTemplateForm({
@@ -445,19 +351,26 @@ function SettingsApp() {
 
   const handleDeleteTemplate = useCallback(
     async (tpl: EmailTemplate) => {
-      if (!supabase) return;
       if (!confirm(`Eliminare il template "${tpl.name}"?`)) return;
 
-      const { error } = await supabase.from('email_templates').delete().eq('id', tpl.id);
-      if (error) {
-        push('error', error.message);
-        return;
-      }
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) { push('error', 'Sessione non valida.'); return; }
 
-      push('success', 'Template eliminato.');
-      await fetchTemplates();
+      try {
+        const res = await fetch(`/api/email/templates/${tpl.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? 'Errore eliminazione');
+        push('success', 'Template eliminato.');
+        await fetchTemplates();
+      } catch (e: unknown) {
+        push('error', e instanceof Error ? e.message : String(e));
+      }
     },
-    [supabase, fetchTemplates, push]
+    [fetchTemplates, push]
   );
 
   // Funzioni per gestione licenze utenti
@@ -471,7 +384,11 @@ function SettingsApp() {
   }, []);
 
   const handleSaveLicense = useCallback(async () => {
-    if (!supabase || !editingLicense) return;
+    if (!editingLicense) return;
+
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) { push('error', 'Sessione non valida.'); return; }
     
     setSavingLicense(true);
     try {
@@ -483,50 +400,57 @@ function SettingsApp() {
         metadata: { email: editingLicense.email },
       };
 
+      let res: Response;
       if (editingLicense.license_id) {
-        // Aggiorna licenza esistente
-        const { error } = await supabase
-          .from('licenses')
-          .update(payload)
-          .eq('id', editingLicense.license_id);
-        if (error) throw error;
-        push('success', 'Licenza aggiornata.');
+        res = await fetch(`/api/admin/licenses/${editingLicense.license_id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
       } else {
-        // Crea nuova licenza
-        const { error } = await supabase
-          .from('licenses')
-          .insert(payload);
-        if (error) throw error;
-        push('success', 'Licenza creata.');
+        res = await fetch('/api/admin/licenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
       }
+
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore salvataggio');
+      push('success', editingLicense.license_id ? 'Licenza aggiornata.' : 'Licenza creata.');
 
       setEditingLicense(null);
       await fetchUserLicenses();
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : (typeof e === 'object' && e !== null && 'message' in e ? String((e as {message: unknown}).message) : 'Errore sconosciuto');
+      const errMsg = e instanceof Error ? e.message : 'Errore sconosciuto';
       push('error', errMsg);
     } finally {
       setSavingLicense(false);
     }
-  }, [supabase, editingLicense, licenseForm, fetchUserLicenses, push]);
+  }, [editingLicense, licenseForm, fetchUserLicenses, push]);
 
   const handleDeleteLicense = useCallback(async (userLic: UserLicense) => {
-    if (!supabase || !userLic.license_id) return;
+    if (!userLic.license_id) return;
     if (!confirm(`Eliminare la licenza per ${userLic.email}?`)) return;
 
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) { push('error', 'Sessione non valida.'); return; }
+
     try {
-      const { error } = await supabase
-        .from('licenses')
-        .delete()
-        .eq('id', userLic.license_id);
-      if (error) throw error;
+      const res = await fetch(`/api/admin/licenses/${userLic.license_id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore eliminazione');
       push('success', 'Licenza eliminata.');
       await fetchUserLicenses();
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : (typeof e === 'object' && e !== null && 'message' in e ? String((e as {message: unknown}).message) : 'Errore sconosciuto');
+      const errMsg = e instanceof Error ? e.message : 'Errore sconosciuto';
       push('error', errMsg);
     }
-  }, [supabase, fetchUserLicenses, push]);
+  }, [fetchUserLicenses, push]);
 
   // Form per creare licenza per nuovo utente
   const [newLicenseUserId, setNewLicenseUserId] = useState('');
@@ -534,9 +458,6 @@ function SettingsApp() {
   const [creatingNewLicense, setCreatingNewLicense] = useState(false);
 
   const handleCreateNewLicense = useCallback(async () => {
-    if (!supabase) return;
-    
-    // Verifica che almeno uno dei due campi sia compilato
     if (!newLicenseUserId.trim() && !newLicenseEmail.trim()) {
       push('error', 'Inserisci l\'ID utente o l\'email');
       return;
@@ -564,82 +485,53 @@ function SettingsApp() {
         return;
       }
 
-      const { error } = await supabase
-        .from('licenses')
-        .insert({
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) { push('error', 'Sessione non valida.'); setCreatingNewLicense(false); return; }
+
+      const res = await fetch('/api/admin/licenses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
           user_id: userId,
           status: 'active',
           plan: 'standard',
           expires_at: null,
           metadata: { email: email || null },
-        });
-      
-      if (error) {
-        if (error.message.includes('foreign key') || error.message.includes('violates')) {
-          throw new Error('Utente non trovato. L\'ID deve corrispondere a un utente registrato nel sistema.');
-        }
-        throw error;
-      }
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore creazione licenza');
       
       push('success', `Licenza creata${email ? ` per ${email}` : ''}`);
       setNewLicenseUserId('');
       setNewLicenseEmail('');
       await fetchUserLicenses();
     } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : (typeof e === 'object' && e !== null && 'message' in e ? String((e as {message: unknown}).message) : 'Errore sconosciuto');
+      const errMsg = e instanceof Error ? e.message : 'Errore sconosciuto';
       push('error', errMsg);
     } finally {
       setCreatingNewLicense(false);
     }
-  }, [supabase, newLicenseUserId, newLicenseEmail, fetchUserLicenses, push]);
+  }, [newLicenseUserId, newLicenseEmail, fetchUserLicenses, push]);
 
   // Gestione impostazioni SMTP per utente
   const handleEditUserSettings = useCallback(async (userLic: UserLicense) => {
-    if (!supabase) return;
-    
     setEditingUserSettings(userLic);
-    
-    // Carica le impostazioni esistenti dell'utente
-    try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('*')
-        .eq('owner_id', userLic.user_id)
-        .maybeSingle();
-      
-      if (error) throw error;
-      
-      if (data) {
-        setUserSettingsForm({
-          smtp_host: data.smtp_host ?? '',
-          smtp_port: data.smtp_port ?? 587,
-          smtp_secure: data.smtp_secure ?? false,
-          smtp_user: data.smtp_user ?? '',
-          smtp_from_email: data.smtp_from_email ?? '',
-          smtp_from_name: data.smtp_from_name ?? '',
-          smtp_reply_to: data.smtp_reply_to ?? '',
-        });
-      } else {
-        // Reset form se non ci sono impostazioni
-        setUserSettingsForm({
-          smtp_host: '',
-          smtp_port: 587,
-          smtp_secure: false,
-          smtp_user: '',
-          smtp_from_email: '',
-          smtp_from_name: '',
-          smtp_reply_to: '',
-        });
-      }
-      setUserSmtpPassword('');
-    } catch (e: unknown) {
-      const errMsg = e instanceof Error ? e.message : 'Errore caricamento impostazioni';
-      push('error', errMsg);
-    }
-  }, [supabase, push]);
+    setUserSettingsForm({
+      smtp_host: '',
+      smtp_port: 587,
+      smtp_secure: false,
+      smtp_user: '',
+      smtp_from_email: '',
+      smtp_from_name: '',
+      smtp_reply_to: '',
+    });
+    setUserSmtpPassword('');
+  }, []);
 
   const handleSaveUserSettings = useCallback(async () => {
-    if (!supabase || !editingUserSettings) return;
+    if (!editingUserSettings) return;
     
     setSavingUserSettings(true);
     try {
@@ -682,7 +574,7 @@ function SettingsApp() {
     } finally {
       setSavingUserSettings(false);
     }
-  }, [supabase, editingUserSettings, userSettingsForm, userSmtpPassword, push]);
+  }, [editingUserSettings, userSettingsForm, userSmtpPassword, push]);
 
   if (loading) {
     return (

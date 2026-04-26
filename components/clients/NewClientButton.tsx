@@ -4,7 +4,6 @@ import React, { useEffect, useState, useImperativeHandle, forwardRef } from 'rea
 import { AddressAutocomplete } from '../AddressAutocomplete';
 import { TagInput } from '../TagInput';
 import { useToast } from '../Toaster';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { Client } from '../../types';
 import { getStoredSession } from '../../lib/authClient';
 
@@ -32,7 +31,6 @@ export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonPro
   });
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
-  const supabase = useSupabaseSafe();
 
   useImperativeHandle(ref, () => ({
     openModal: () => setOpen(true),
@@ -57,7 +55,6 @@ export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonPro
 
   async function createClient(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase) return;
     setSaving(true);
     setErr(null);
     try {
@@ -66,7 +63,6 @@ export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonPro
       if (!uid) throw new Error('Utente non autenticato');
 
       const insert = {
-        owner_id: uid,
         first_name: form.first_name || null,
         last_name: form.last_name || null,
         address: form.address || null,
@@ -77,13 +73,15 @@ export const NewClientButton = forwardRef<NewClientButtonRef, NewClientButtonPro
         status: 'new',
       };
 
-      const { data, error } = await supabase
-        .from('clients')
-        .insert(insert)
-        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, status, first_contacted_at, created_at, lat, lon')
-        .single();
-
-      if (error) throw error;
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify(insert),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Errore creazione cliente');
+      const data = json?.client as Client | undefined;
+      if (!data) throw new Error('Risposta non valida dal server');
 
       if (data?.address) {
         await fetch('/api/geocode', {

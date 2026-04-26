@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useSupabaseSafe } from '../lib/supabase';
 import type { EmailTemplate } from '../types';
 import { getStoredSession } from '../lib/authClient';
 
@@ -14,13 +13,12 @@ interface NewsletterModalProps {
 }
 
 export function NewsletterModal({ isOpen, onClose, onSend, clientCount, sending }: NewsletterModalProps) {
-  const supabase = useSupabaseSafe();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
   useEffect(() => {
-    if (!isOpen || !supabase) return;
+    if (!isOpen) return;
 
     const fetchTemplates = async () => {
       setLoading(true);
@@ -30,23 +28,23 @@ export function NewsletterModal({ isOpen, onClose, onSend, clientCount, sending 
         return;
       }
 
-      const { data, error } = await supabase
-        .from('email_templates')
-        .select('*')
-        .eq('owner_id', session.user_id)
-        .order('name', { ascending: true });
-
-      if (!error && data) {
-        setTemplates(data as EmailTemplate[]);
-        if (data.length > 0 && !selectedTemplateId) {
-          setSelectedTemplateId(data[0].id);
+      const res = await fetch('/api/email/templates', {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && Array.isArray(json?.templates)) {
+        setTemplates(json.templates as EmailTemplate[]);
+        if (json.templates.length > 0 && !selectedTemplateId) {
+          setSelectedTemplateId(json.templates[0].id);
         }
+      } else {
+        setTemplates([]);
       }
       setLoading(false);
     };
 
     fetchTemplates();
-  }, [isOpen, supabase, selectedTemplateId]);
+  }, [isOpen, selectedTemplateId]);
 
   if (!isOpen) return null;
 

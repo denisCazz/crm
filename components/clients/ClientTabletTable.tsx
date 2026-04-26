@@ -6,11 +6,12 @@ import { DeleteClientButton } from './DeleteClientButton';
 
 interface ClientTabletTableProps {
   clients: Client[];
+  onAddClient?: () => void;
   onEdit: (client: Client) => void;
   onDeleted: (clientId: string) => void;
 }
 
-export function ClientTabletTable({ clients, onEdit, onDeleted }: ClientTabletTableProps) {
+export function ClientTabletTable({ clients, onAddClient, onEdit, onDeleted }: ClientTabletTableProps) {
   return (
     <div className="hidden sm:block lg:hidden table-container">
       <table className="w-full text-sm">
@@ -33,6 +34,11 @@ export function ClientTabletTable({ clients, onEdit, onDeleted }: ClientTabletTa
                 </div>
                 <p className="font-medium text-foreground">Nessun cliente trovato</p>
                 <p className="text-sm text-muted mt-1">Aggiungi un nuovo cliente per visualizzarlo qui</p>
+                {onAddClient && (
+                  <button type="button" onClick={onAddClient} className="btn btn-primary mt-4">
+                    Nuovo cliente
+                  </button>
+                )}
               </td>
             </tr>
           ) : (

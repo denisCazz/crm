@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '../../../lib/supabaseServer';
 import { encryptSecret } from '../../../lib/crypto';
 import { getSessionFromToken } from '../../../lib/auth';
+import { dbQuery } from '../../../lib/mysql';
+import { randomUUID } from 'crypto';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
   .split(',')
@@ -61,29 +62,15 @@ export async function GET(req: Request) {
       );
     }
 
-    const supabase = getServiceSupabaseClient();
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at')
-      .eq('owner_id', currentUser.id)
-      .maybeSingle();
-
-    if (error) {
-      const msg = error.message ?? String(error);
-      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
-        return NextResponse.json(
-          {
-            error:
-              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
-          },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    // Non restituiamo mai la password (neanche cifrata).
-    return NextResponse.json({ settings: data ?? null });
+    const rows = await dbQuery<any>(
+      `SELECT id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at
+       FROM app_settings
+       WHERE owner_id = :owner_id
+       LIMIT 1`,
+      { owner_id: currentUser.id }
+    );
+    const data = rows[0] ?? null;
+    return NextResponse.json({ settings: data });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });
@@ -152,31 +139,65 @@ export async function POST(req: Request) {
         update.smtp_password_enc = encryptSecret(trimmed);
       }
     }
-
-    const supabase = getServiceSupabaseClient();
-
-    // Upsert per owner (unique)
-    const { data, error } = await supabase
-      .from('app_settings')
-      .upsert(update, { onConflict: 'owner_id' })
-      .select('id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at')
-      .single();
-
-    if (error) {
-      const msg = error.message ?? String(error);
-      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
-        return NextResponse.json(
-          {
-            error:
-              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
-          },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const existing = await dbQuery<any>(`SELECT id FROM app_settings WHERE owner_id = :owner_id LIMIT 1`, { owner_id: targetOwnerId });
+    if (existing[0]) {
+      await dbQuery(
+        `UPDATE app_settings SET
+          brand_name = COALESCE(:brand_name, brand_name),
+          logo_url = COALESCE(:logo_url, logo_url),
+          smtp_host = :smtp_host,
+          smtp_port = :smtp_port,
+          smtp_secure = :smtp_secure,
+          smtp_user = :smtp_user,
+          smtp_password_enc = COALESCE(:smtp_password_enc, smtp_password_enc),
+          smtp_from_email = :smtp_from_email,
+          smtp_from_name = :smtp_from_name,
+          smtp_reply_to = :smtp_reply_to
+         WHERE owner_id = :owner_id`,
+        {
+          owner_id: targetOwnerId,
+          brand_name: (update as any).brand_name ?? null,
+          logo_url: (update as any).logo_url ?? null,
+          smtp_host: update.smtp_host,
+          smtp_port: update.smtp_port,
+          smtp_secure: update.smtp_secure,
+          smtp_user: update.smtp_user,
+          smtp_password_enc: (update as any).smtp_password_enc ?? null,
+          smtp_from_email: update.smtp_from_email,
+          smtp_from_name: update.smtp_from_name,
+          smtp_reply_to: update.smtp_reply_to,
+        }
+      );
+    } else {
+      await dbQuery(
+        `INSERT INTO app_settings (id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_password_enc, smtp_from_email, smtp_from_name, smtp_reply_to)
+         VALUES (:id, :owner_id, :brand_name, :logo_url, :smtp_host, :smtp_port, :smtp_secure, :smtp_user, :smtp_password_enc, :smtp_from_email, :smtp_from_name, :smtp_reply_to)`,
+        {
+          id: randomUUID(),
+          owner_id: targetOwnerId,
+          brand_name: (update as any).brand_name ?? null,
+          logo_url: (update as any).logo_url ?? null,
+          smtp_host: update.smtp_host,
+          smtp_port: update.smtp_port,
+          smtp_secure: update.smtp_secure,
+          smtp_user: update.smtp_user,
+          smtp_password_enc: (update as any).smtp_password_enc ?? null,
+          smtp_from_email: update.smtp_from_email,
+          smtp_from_name: update.smtp_from_name,
+          smtp_reply_to: update.smtp_reply_to,
+        }
+      );
     }
 
-    return NextResponse.json({ settings: data });
+    const rows = await dbQuery<any>(
+      `SELECT id, owner_id, brand_name, logo_url, smtp_host, smtp_port, smtp_secure, smtp_user, smtp_from_email, smtp_from_name, smtp_reply_to, api_key, created_at, updated_at
+       FROM app_settings
+       WHERE owner_id = :owner_id
+       LIMIT 1`,
+      { owner_id: targetOwnerId }
+    );
+
+    return NextResponse.json({ settings: rows[0] ?? null });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: message }, { status: 500 });

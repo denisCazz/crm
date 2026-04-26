@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '@/lib/supabaseServer';
 import { hashPassword } from '@/lib/auth';
+import { dbQuery } from '@/lib/mysql';
 
 // ENDPOINT DI DEBUG - RIMUOVERE IN PRODUZIONE!
 export async function POST(request: NextRequest) {
@@ -15,19 +15,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getServiceSupabaseClient();
-
     // Cerca utente
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, email, password_hash, is_active')
-      .eq('email', email.toLowerCase())
-      .single();
-
-    if (error) {
+    const rows = await dbQuery<any>(
+      `SELECT id, email, password_hash, is_active FROM users WHERE email = :email LIMIT 1`,
+      { email: email.toLowerCase() }
+    );
+    const user = rows[0];
+    if (!user) {
       return NextResponse.json({
         success: false,
-        error: error.message,
+        error: 'User not found',
         details: 'Utente non trovato nel database',
       });
     }

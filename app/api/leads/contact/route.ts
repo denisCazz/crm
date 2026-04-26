@@ -1,4 +1,5 @@
-import { getServiceSupabaseClient } from '@/lib/supabaseServer';
+import { dbQuery } from '@/lib/mysql';
+import { randomUUID } from 'crypto';
 
 type ContactLeadPayload = {
   email?: string;
@@ -97,8 +98,6 @@ export async function POST(req: Request): Promise<Response> {
   const inputTags = Array.isArray(payload.tags) ? payload.tags : [];
   const tags = uniqueStrings(['contact', ...inputTags]);
 
-  const supabase = getServiceSupabaseClient();
-
   // Cerca un record esistente per evitare duplicati.
   // Priorità: email, poi telefono.
   let existing:
@@ -115,23 +114,23 @@ export async function POST(req: Request): Promise<Response> {
     | undefined = null;
 
   if (email) {
-    const res = await supabase
-      .from('clients')
-      .select('id, first_name, last_name, phone, email, tags, notes')
-      .eq('owner_id', ownerId)
-      .ilike('email', email)
-      .maybeSingle();
-    if (res.error) return json(500, { ok: false, error: res.error.message });
-    existing = res.data;
+    const rows = await dbQuery<any>(
+      `SELECT id, first_name, last_name, phone, email, tags, notes
+       FROM clients
+       WHERE owner_id = :owner_id AND LOWER(email) = :email
+       LIMIT 1`,
+      { owner_id: ownerId, email }
+    );
+    existing = rows[0] ? { ...rows[0], tags: rows[0].tags ? JSON.parse(rows[0].tags) : null } : null;
   } else if (phone) {
-    const res = await supabase
-      .from('clients')
-      .select('id, first_name, last_name, phone, email, tags, notes')
-      .eq('owner_id', ownerId)
-      .eq('phone', phone)
-      .maybeSingle();
-    if (res.error) return json(500, { ok: false, error: res.error.message });
-    existing = res.data;
+    const rows = await dbQuery<any>(
+      `SELECT id, first_name, last_name, phone, email, tags, notes
+       FROM clients
+       WHERE owner_id = :owner_id AND phone = :phone
+       LIMIT 1`,
+      { owner_id: ownerId, phone }
+    );
+    existing = rows[0] ? { ...rows[0], tags: rows[0].tags ? JSON.parse(rows[0].tags) : null } : null;
   }
 
   if (existing?.id) {
@@ -149,13 +148,30 @@ export async function POST(req: Request): Promise<Response> {
     if (phone && !existing.phone) update.phone = phone;
     if (email && !existing.email) update.email = email;
 
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update(update)
-      .eq('id', existing.id)
-      .eq('owner_id', ownerId);
-
-    if (updateError) return json(500, { ok: false, error: updateError.message });
+    await dbQuery(
+      `UPDATE clients SET
+        lead_source = :lead_source,
+        contact_request = :contact_request,
+        tags = :tags,
+        notes = :notes,
+        first_name = COALESCE(NULLIF(:first_name, ''), first_name),
+        last_name = COALESCE(NULLIF(:last_name, ''), last_name),
+        phone = COALESCE(NULLIF(:phone, ''), phone),
+        email = COALESCE(:email, email)
+       WHERE id = :id AND owner_id = :owner_id`,
+      {
+        id: existing.id,
+        owner_id: ownerId,
+        lead_source: 'contact',
+        contact_request: message,
+        tags: mergedTags.length > 0 ? JSON.stringify(mergedTags) : null,
+        notes: message,
+        first_name,
+        last_name,
+        phone,
+        email,
+      }
+    );
     return json(200, { ok: true, id: existing.id, existing: true });
   }
 
@@ -172,12 +188,24 @@ export async function POST(req: Request): Promise<Response> {
     contact_request: message,
   };
 
-  const { data: created, error: createError } = await supabase
-    .from('clients')
-    .insert(insert)
-    .select('id')
-    .single();
+  const id = randomUUID();
+  await dbQuery(
+    `INSERT INTO clients (id, owner_id, email, first_name, last_name, phone, notes, tags, status, lead_source, contact_request)
+     VALUES (:id, :owner_id, :email, :first_name, :last_name, :phone, :notes, :tags, :status, :lead_source, :contact_request)`,
+    {
+      id,
+      owner_id: insert.owner_id,
+      email: insert.email,
+      first_name: insert.first_name,
+      last_name: insert.last_name,
+      phone: insert.phone,
+      notes: insert.notes,
+      tags: insert.tags ? JSON.stringify(insert.tags) : null,
+      status: insert.status,
+      lead_source: insert.lead_source,
+      contact_request: insert.contact_request,
+    }
+  );
 
-  if (createError) return json(500, { ok: false, error: createError.message });
-  return json(201, { ok: true, id: created.id, existing: false });
+  return json(201, { ok: true, id, existing: false });
 }

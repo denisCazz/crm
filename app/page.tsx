@@ -7,9 +7,9 @@ import { useRouter } from "next/navigation";
 import { ToastProvider, useToast } from "../components/Toaster";
 import LoginForm from "../components/LoginForm";
 import { Client, License, AppSettings } from "../types";
-import { useSupabaseSafe } from "../lib/supabase";
 import { ClientDashboard } from "../components/clients/ClientDashboard";
 import { NewClientButton, NewClientButtonRef } from "../components/clients/NewClientButton";
+import { ClientOverview } from "../components/clients/ClientOverview";
 import { NewsletterModal } from "../components/NewsletterModal";
 import { normalizeClient } from "../lib/normalizeClient";
 import { AppLayout } from "../components/layout/AppLayout";
@@ -78,7 +78,6 @@ function MainApp() {
     | { status: "error"; message: string }
   >({ status: "idle" });
   const { push } = useToast();
-  const supabase = useSupabaseSafe();
   const newClientButtonRef = useRef<NewClientButtonRef>(null);
 
   const handleRowsChange = useCallback((next: Client[]) => {
@@ -195,7 +194,7 @@ function MainApp() {
 
   // Verifica licenza
   useEffect(() => {
-    if (!supabase || !user) {
+    if (!user) {
       setLicenseState((prev) => (prev.status === "idle" ? prev : { status: "idle" }));
       return;
     }
@@ -209,22 +208,22 @@ function MainApp() {
     setLicenseState({ status: "checking" });
 
     const evaluateLicense = async () => {
-      const { data, error } = await supabase
-        .from("licenses")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("expires_at", { ascending: false, nullsFirst: false })
-        .limit(1)
-        .maybeSingle();
-
       if (cancelled) return;
-
-      if (error) {
-        console.error("Failed to fetch license", error);
-        setLicenseState({ status: "error", message: error.message });
+      const session = getStoredSession();
+      if (!session) {
+        setLicenseState({ status: "inactive", reason: "Sessione scaduta. Effettua di nuovo l'accesso." });
         return;
       }
 
+      const res = await fetch("/api/licenses/me", { headers: { Authorization: `Bearer ${session.token}` } });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setLicenseState({ status: "error", message: json?.error || "Errore durante la verifica licenza" });
+        return;
+      }
+
+      const data = json?.license as License | null;
       if (!data) {
         setLicenseState({
           status: "inactive",
@@ -258,7 +257,7 @@ function MainApp() {
     return () => {
       cancelled = true;
     };
-  }, [supabase, user]);
+  }, [user]);
 
   const isLicenseActive = useMemo(() => licenseState.status === "active", [licenseState]);
 
@@ -318,6 +317,22 @@ function MainApp() {
 
   const brandName = brandSettings?.brand_name || "Bitora CRM";
   const logoUrl = brandSettings?.logo_url;
+
+  const overview = useMemo(() => {
+    const clientsCount = rows.length;
+    const withPhone = rows.reduce((acc, r) => (r.phone ? acc + 1 : acc), 0);
+    const withEmail = rows.reduce((acc, r) => (r.email ? acc + 1 : acc), 0);
+    const latestClient = clientsCount > 0 ? rows[0] : null;
+    const latestCreatedAt = latestClient?.created_at
+      ? new Date(latestClient.created_at).toLocaleString("it-IT", { dateStyle: "medium", timeStyle: "short" })
+      : null;
+
+    return { clientsCount, withPhone, withEmail, latestClient, latestCreatedAt };
+  }, [rows]);
+
+  const openNewClient = useCallback(() => {
+    newClientButtonRef.current?.openModal?.();
+  }, []);
 
   if (loading) {
     return (
@@ -400,25 +415,35 @@ function MainApp() {
       onLogout={handleLogout}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
-        {/* Welcome Card */}
-        <div className="card-elevated p-4 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        {/* Hero */}
+        <div className="card-gradient p-5 sm:p-6">
+          <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2 max-w-2xl">
-              <h2 className="text-lg font-semibold text-foreground">
-                Ciao {getDisplayName(user)}! 👋
+              <div className="flex items-center gap-2">
+                <span className="badge badge-primary">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse-soft" />
+                  Dashboard
+                </span>
+                <span className="badge badge-accent hidden sm:inline-flex">
+                  {brandName}
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
+                Ciao {getDisplayName(user)}
               </h2>
-              <p className="text-sm text-muted">
-                Gestisci i tuoi clienti, monitora le interazioni e mantieni la pipeline sempre aggiornata.
+              <p className="text-sm text-muted max-w-xl">
+                Aggiungi clienti, trova subito le informazioni e invia comunicazioni in pochi click.
               </p>
             </div>
-            <div className="w-full lg:w-auto flex-shrink-0 space-y-3">
-              {isLicenseActive && (
-                <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+
+            {isLicenseActive && (
+              <div className="w-full lg:w-auto flex-shrink-0 space-y-3">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 lg:justify-end">
                   <button
                     type="button"
                     onClick={openStatsModal}
                     disabled={rows.length === 0}
-                    className="btn btn-secondary"
+                    className="btn btn-outline-secondary"
                   >
                     Statistiche
                   </button>
@@ -426,7 +451,7 @@ function MainApp() {
                     type="button"
                     onClick={exportToCSV}
                     disabled={rows.length === 0}
-                    className="btn btn-secondary"
+                    className="btn btn-outline-secondary"
                   >
                     Esporta CSV
                   </button>
@@ -434,22 +459,33 @@ function MainApp() {
                     type="button"
                     onClick={openNewsletterModal}
                     disabled={sendingNewsletter}
-                    className="btn btn-secondary"
+                    className="btn btn-outline-secondary"
                   >
                     Newsletter
                   </button>
+                  <button type="button" onClick={openNewClient} className="btn btn-primary">
+                    + Nuovo
+                  </button>
                 </div>
-              )}
-              {isLicenseActive && (
-                <NewClientButton
-                  ref={newClientButtonRef}
-                  onCreated={handleClientCreated}
-                  fullWidth
-                />
-              )}
-            </div>
+
+                <div className="hidden">
+                  <NewClientButton ref={newClientButtonRef} onCreated={handleClientCreated} fullWidth />
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        {/* KPI overview */}
+        {isLicenseActive && (
+          <ClientOverview
+            clientsCount={overview.clientsCount}
+            withPhone={overview.withPhone}
+            withEmail={overview.withEmail}
+            latestClient={overview.latestClient}
+            latestCreatedAt={overview.latestCreatedAt}
+          />
+        )}
 
         {/* Email sections */}
         {isLicenseActive && (
@@ -485,6 +521,7 @@ function MainApp() {
           <ClientDashboard
             user={user}
             onRowsChange={handleRowsChange}
+            onAddClient={openNewClient}
             isStatsModalOpen={isStatsModalOpen}
             onStatsClose={closeStatsModal}
             refreshKey={tableRefreshKey}

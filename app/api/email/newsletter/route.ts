@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '../../../../lib/supabaseServer';
 import { sendEmail } from '../../../../lib/emailSender';
 import { requireAuth } from '../../../../lib/authHelpers';
+import { dbQuery } from '../../../../lib/mysql';
+import { randomUUID } from 'crypto';
 
 type NewsletterPayload = {
   template_id: string;
@@ -14,8 +15,6 @@ function renderTemplate(input: string, vars: Record<string, string>): string {
 }
 
 export async function POST(req: Request) {
-  const supabase = getServiceSupabaseClient();
-
   try {
     const user = await requireAuth(req);
     const userId = user.id;
@@ -29,33 +28,21 @@ export async function POST(req: Request) {
     }
 
     // Fetch template and clients with email
-    const [templateRes, clientsRes, settingsRes] = await Promise.all([
-      supabase
-        .from('email_templates')
-        .select('*')
-        .eq('id', templateId)
-        .eq('owner_id', userId)
-        .single(),
-      supabase
-        .from('clients')
-        .select('id, first_name, last_name, email')
-        .eq('owner_id', userId)
-        .not('email', 'is', null),
-      supabase
-        .from('app_settings')
-        .select('*')
-        .eq('owner_id', userId)
-        .maybeSingle(),
+    const [templateRows, clientRows, settingsRows] = await Promise.all([
+      dbQuery<any>(
+        `SELECT id, owner_id, subject, body_html, body_text FROM email_templates
+         WHERE id = :id AND owner_id = :owner_id LIMIT 1`,
+        { id: templateId, owner_id: userId }
+      ),
+      dbQuery<any>(
+        `SELECT id, first_name, last_name, email FROM clients
+         WHERE owner_id = :owner_id AND email IS NOT NULL AND email <> ''`,
+        { owner_id: userId }
+      ),
+      dbQuery<any>(`SELECT * FROM app_settings WHERE owner_id = :owner_id LIMIT 1`, { owner_id: userId }),
     ]);
 
-    if (templateRes.error) {
-      return NextResponse.json({ error: templateRes.error.message }, { status: 400 });
-    }
-    if (clientsRes.error) {
-      return NextResponse.json({ error: clientsRes.error.message }, { status: 500 });
-    }
-
-    const template = templateRes.data as {
+    const template = templateRows[0] as {
       id: string;
       owner_id: string;
       subject: string;
@@ -63,7 +50,9 @@ export async function POST(req: Request) {
       body_text: string | null;
     };
 
-    const clients = (clientsRes.data ?? []).filter(
+    if (!template) return NextResponse.json({ error: 'Template non trovato' }, { status: 400 });
+
+    const clients = (clientRows ?? []).filter(
       (c: { email?: string | null }) => c.email && c.email.trim().length > 0
     );
 
@@ -71,7 +60,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nessun cliente con email trovato.' }, { status: 400 });
     }
 
-    const settings = settingsRes.data;
+    const settings = settingsRows[0] ?? null;
 
     // For newsletter, we use generic vars (no personalization in BCC mode)
     const vars: Record<string, string> = {
@@ -90,24 +79,18 @@ export async function POST(req: Request) {
     const bccEmails = clients.map((c: { email: string }) => c.email);
 
     // Log the newsletter send
-    const { data: sendRow, error: sendInsertError } = await supabase
-      .from('email_sends')
-      .insert({
+    const sendId = randomUUID();
+    await dbQuery(
+      `INSERT INTO email_sends (id, owner_id, client_id, template_id, to_email, subject, status)
+       VALUES (:id, :owner_id, NULL, :template_id, :to_email, :subject, 'queued')`,
+      {
+        id: sendId,
         owner_id: userId,
-        client_id: null, // Newsletter = no specific client
         template_id: template.id,
         to_email: `Newsletter (${bccEmails.length} destinatari)`,
         subject,
-        status: 'queued',
-      })
-      .select('id')
-      .single();
-
-    if (sendInsertError) {
-      return NextResponse.json({ error: sendInsertError.message }, { status: 500 });
-    }
-
-    const sendId = sendRow?.id as string;
+      }
+    );
 
     try {
       // Invia email usando il nuovo sistema Brevo centralizzato
@@ -121,15 +104,10 @@ export async function POST(req: Request) {
         fromName: settings?.brand_name ? `${settings.brand_name}` : 'Bitora CRM',
       });
 
-      await supabase
-        .from('email_sends')
-        .update({ 
-          status: 'sent', 
-          sent_at: new Date().toISOString(), 
-          error: null 
-        })
-        .eq('id', sendId)
-        .eq('owner_id', userId);
+      await dbQuery(
+        `UPDATE email_sends SET status = 'sent', sent_at = NOW(3), error = NULL WHERE id = :id AND owner_id = :owner_id`,
+        { id: sendId, owner_id: userId }
+      );
 
       return NextResponse.json({ 
         ok: true, 
@@ -140,14 +118,10 @@ export async function POST(req: Request) {
     } catch (sendError: unknown) {
       const errorMessage = sendError instanceof Error ? sendError.message : String(sendError);
       
-      await supabase
-        .from('email_sends')
-        .update({ 
-          status: 'failed', 
-          error: errorMessage 
-        })
-        .eq('id', sendId)
-        .eq('owner_id', userId);
+      await dbQuery(
+        `UPDATE email_sends SET status = 'failed', error = :error WHERE id = :id AND owner_id = :owner_id`,
+        { id: sendId, owner_id: userId, error: errorMessage }
+      );
 
       return NextResponse.json({ error: errorMessage }, { status: 500 });
     }

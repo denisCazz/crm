@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Usa service role per poter creare licenze senza RLS
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { dbQuery } from '@/lib/mysql';
+import { randomUUID } from 'crypto';
 
 interface LicenseCreatePayload {
   user_id: string;
@@ -24,38 +19,38 @@ export async function POST(request: Request) {
     }
 
     // Controlla se la licenza esiste già
-    const { data: existingLicense } = await supabaseAdmin
-      .from('licenses')
-      .select('id')
-      .eq('user_id', user_id)
-      .single();
-
-    if (existingLicense) {
+    const existing = await dbQuery<any>(
+      `SELECT id, user_id, status, plan, expires_at, created_at FROM licenses WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 1`,
+      { user_id }
+    );
+    if (existing[0]) {
       // Licenza già esistente, non creare duplicati
-      return NextResponse.json({ message: 'Licenza già esistente', license: existingLicense });
+      return NextResponse.json({ message: 'Licenza già esistente', license: existing[0] });
     }
 
     // Calcola data scadenza trial (30 giorni)
     const trialExpires = new Date();
     trialExpires.setDate(trialExpires.getDate() + 30);
+    const licenseId = randomUUID();
 
-    const { data, error } = await supabaseAdmin
-      .from('licenses')
-      .insert({
+    await dbQuery(
+      `INSERT INTO licenses (id, user_id, status, plan, expires_at)
+       VALUES (:id, :user_id, :status, :plan, :expires_at)`,
+      {
+        id: licenseId,
         user_id,
-        plan,
         status,
-        expires_at: expires_at ?? trialExpires.toISOString(),
-      })
-      .select()
-      .single();
+        plan,
+        expires_at: (expires_at ?? trialExpires.toISOString()).slice(0, 23).replace('T', ' '),
+      }
+    );
 
-    if (error) {
-      console.error('Errore creazione licenza:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    const created = await dbQuery<any>(
+      `SELECT id, user_id, status, plan, expires_at, created_at FROM licenses WHERE id = :id LIMIT 1`,
+      { id: licenseId }
+    );
 
-    return NextResponse.json({ message: 'Licenza creata con successo', license: data });
+    return NextResponse.json({ message: 'Licenza creata con successo', license: created[0] ?? { id: licenseId, user_id, status, plan } });
   } catch (e) {
     console.error('Errore API license:', e);
     return NextResponse.json({ error: 'Errore interno del server' }, { status: 500 });

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '../../../lib/supabaseServer';
 import { requireAdmin } from '../../../lib/authHelpers';
 import { listUsers } from '../../../lib/auth';
+import { dbQuery } from '../../../lib/mysql';
 
 // Lista delle email admin
 const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
@@ -11,17 +11,8 @@ export async function GET(request: Request) {
     // Verifica che chi chiama sia admin
     const user = await requireAdmin(request, ADMIN_EMAILS);
 
-    const supabase = getServiceSupabaseClient();
-
     // Fetch tutte le licenze
-    const { data: licenses, error: licensesError } = await supabase
-      .from('licenses')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (licensesError) {
-      return NextResponse.json({ error: licensesError.message }, { status: 500 });
-    }
+    const licenses = await dbQuery<any>(`SELECT * FROM licenses ORDER BY created_at DESC`);
 
     // Fetch tutti gli utenti dalla tabella custom
     const users = await listUsers();
@@ -52,8 +43,8 @@ export async function GET(request: Request) {
           license_id: lic.id,
           status: lic.status,
           plan: lic.plan,
-          expires_at: lic.expires_at,
-          created_at: lic.created_at,
+          expires_at: lic.expires_at ? new Date(lic.expires_at).toISOString() : null,
+          created_at: lic.created_at ? new Date(lic.created_at).toISOString() : new Date().toISOString(),
         });
       }
     }

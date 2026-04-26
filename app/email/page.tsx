@@ -7,11 +7,9 @@ import { useRouter } from 'next/navigation';
 import { ToastProvider } from '../../components/Toaster';
 import { EmailGate } from './_components/EmailGate';
 import { AppLayout } from '../../components/layout/AppLayout';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { signOut as authSignOut } from '../../lib/authClient';
 
 function EmailHub() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   return (
     <EmailGate title="Email · Bitora CRM">

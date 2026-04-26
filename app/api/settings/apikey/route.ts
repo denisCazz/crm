@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '../../../../lib/supabaseServer';
 import { randomBytes } from 'crypto';
 import { requireAuth } from '../../../../lib/authHelpers';
+import { dbQuery } from '../../../../lib/mysql';
+import { randomUUID } from 'crypto';
 
 // Genera una API key sicura
 function generateApiKey(): string {
@@ -14,39 +15,21 @@ export async function POST(req: Request) {
     const user = await requireAuth(req);
     const userId = user.id;
 
-    const supabase = getServiceSupabaseClient();
     const newApiKey = generateApiKey();
 
-    // Upsert: crea o aggiorna l'API key per questo utente
-    const { data, error } = await supabase
-      .from('app_settings')
-      .upsert(
-        { 
-          owner_id: userId, 
-          api_key: newApiKey 
-        },
-        { onConflict: 'owner_id' }
-      )
-      .select('api_key')
-      .single();
-
-    if (error) {
-      const msg = error.message ?? String(error);
-      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
-        return NextResponse.json(
-          {
-            error:
-              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
-          },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    const existing = await dbQuery<any>(`SELECT id FROM app_settings WHERE owner_id = :owner_id LIMIT 1`, { owner_id: userId });
+    if (existing[0]) {
+      await dbQuery(`UPDATE app_settings SET api_key = :api_key WHERE owner_id = :owner_id`, { api_key: newApiKey, owner_id: userId });
+    } else {
+      await dbQuery(
+        `INSERT INTO app_settings (id, owner_id, api_key) VALUES (:id, :owner_id, :api_key)`,
+        { id: randomUUID(), owner_id: userId, api_key: newApiKey }
+      );
     }
 
     return NextResponse.json({ 
       success: true,
-      api_key: data.api_key,
+      api_key: newApiKey,
       message: 'API key generata con successo'
     });
 
@@ -63,26 +46,7 @@ export async function DELETE(req: Request) {
     const user = await requireAuth(req);
     const userId = user.id;
 
-    const supabase = getServiceSupabaseClient();
-
-    const { error } = await supabase
-      .from('app_settings')
-      .update({ api_key: null })
-      .eq('owner_id', userId);
-
-    if (error) {
-      const msg = error.message ?? String(error);
-      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
-        return NextResponse.json(
-          {
-            error:
-              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
-          },
-          { status: 500 }
-        );
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await dbQuery(`UPDATE app_settings SET api_key = NULL WHERE owner_id = :owner_id`, { owner_id: userId });
 
     return NextResponse.json({ 
       success: true,

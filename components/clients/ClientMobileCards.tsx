@@ -8,13 +8,14 @@ type FlipState = 'details' | 'edit' | null;
 
 interface ClientMobileCardsProps {
   clients: Client[];
+  onAddClient?: () => void;
   flippedCards: Record<string, FlipState>;
   onFlip: (clientId: string, state: FlipState) => void;
   onEdit: (client: Client) => void;
   onDeleted: (clientId: string) => void;
 }
 
-export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDeleted }: ClientMobileCardsProps) {
+export function ClientMobileCards({ clients, onAddClient, flippedCards, onFlip, onEdit, onDeleted }: ClientMobileCardsProps) {
   if (clients.length === 0) {
     return (
       <div className="text-center py-16">
@@ -25,6 +26,11 @@ export function ClientMobileCards({ clients, flippedCards, onFlip, onEdit, onDel
         </div>
         <p className="text-lg font-medium text-foreground">Nessun cliente trovato</p>
         <p className="text-sm text-muted mt-1">Aggiungi un nuovo cliente per iniziare</p>
+        {onAddClient && (
+          <button type="button" onClick={onAddClient} className="btn btn-primary mt-5">
+            Nuovo cliente
+          </button>
+        )}
       </div>
     );
   }

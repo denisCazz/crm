@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { dbQuery } from "@/lib/mysql";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,34 +31,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing id/owner_id" }, { status: 400 });
     }
 
-    // ✅ CREA IL CLIENT QUI (a runtime, non a import-time)
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !service) {
-      return NextResponse.json({ error: "Server env not set" }, { status: 500 });
-    }
-    const supabase: SupabaseClient = createClient(url, service);
-
     if (!address) {
-      await supabase.from("clients").update({ lat: null, lon: null }).eq("id", id).eq("owner_id", owner_id);
+      await dbQuery(`UPDATE clients SET lat = NULL, lon = NULL WHERE id = :id AND owner_id = :owner_id`, { id, owner_id });
       return NextResponse.json({ ok: true, lat: null, lon: null });
     }
 
-    // cache
-    const { data: cached } = await supabase
-      .from("geocode_cache")
-      .select("lat, lon")
-      .eq("addr", address)
-      .maybeSingle<{ lat: number | null; lon: number | null }>();
-
-    const coords: Coords =
-      cached?.lat != null && cached?.lon != null ? { lat: cached.lat, lon: cached.lon } : await fetchCoords(address);
+    const coords: Coords = await fetchCoords(address);
 
     if (coords) {
-      if (!cached) {
-        await supabase.from("geocode_cache").upsert({ addr: address, lat: coords.lat, lon: coords.lon });
-      }
-      await supabase.from("clients").update({ lat: coords.lat, lon: coords.lon }).eq("id", id).eq("owner_id", owner_id);
+      await dbQuery(
+        `UPDATE clients SET lat = :lat, lon = :lon WHERE id = :id AND owner_id = :owner_id`,
+        { id, owner_id, lat: coords.lat, lon: coords.lon }
+      );
     }
 
     return NextResponse.json({ ok: true, lat: coords?.lat ?? null, lon: coords?.lon ?? null });

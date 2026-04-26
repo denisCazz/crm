@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { User } from '../../lib/auth';
 import { Client } from '../../types';
-import { useSupabaseSafe } from '../../lib/supabase';
 import ClientDetailModal from '../ClientDetailModal';
 import { StatisticsModal } from '../StatisticsModal';
 import { ClientEditModal } from './ClientEditModal';
@@ -11,47 +10,61 @@ import { ClientMobileCards } from './ClientMobileCards';
 import { ClientDesktopTable } from './ClientDesktopTable';
 import { ClientTabletTable } from './ClientTabletTable';
 import { normalizeClient } from '../../lib/normalizeClient';
+import { getStoredSession } from '../../lib/authClient';
 
 type FlipState = 'details' | 'edit' | null;
 
 interface ClientDashboardProps {
   user: User;
   onRowsChange?: (rows: Client[]) => void;
+  onAddClient?: () => void;
   isStatsModalOpen: boolean;
   onStatsClose: () => void;
   refreshKey: number;
   isEnabled?: boolean;
 }
 
-export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsClose, refreshKey, isEnabled = true }: ClientDashboardProps) {
+export function ClientDashboard({ user, onRowsChange, onAddClient, isStatsModalOpen, onStatsClose, refreshKey, isEnabled = true }: ClientDashboardProps) {
   const [rows, setRows] = useState<Client[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [quickFilters, setQuickFilters] = useState<{ withEmail: boolean; withPhone: boolean; withTags: boolean }>({
+    withEmail: false,
+    withPhone: false,
+    withTags: false,
+  });
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [flippedCards, setFlippedCards] = useState<Record<string, FlipState>>({});
-  const supabase = useSupabaseSafe();
 
   useEffect(() => {
-    if (!supabase || !isEnabled) return;
+    if (!isEnabled) return;
     let cancelled = false;
 
     const loadClients = async () => {
       setError(null);
-      const { data, error: queryError } = await supabase
-        .from('clients')
-        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, status, first_contacted_at, lat, lon, created_at')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false });
+      const session = getStoredSession();
+      if (!session) {
+        setError('Sessione scaduta. Ricarica la pagina.');
+        setRows([]);
+        return;
+      }
+
+      const res = await fetch('/api/clients', {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      const json = await res.json().catch(() => null);
 
       if (cancelled) return;
 
-      if (queryError) {
-        setError(queryError.message);
+      if (!res.ok) {
+        setError(json?.error || 'Errore nel caricamento clienti');
         setRows([]);
       } else {
-        const normalized = ((data ?? []) as Client[]).map(normalizeClient);
+        const normalized = (((json?.clients ?? []) as Client[]) ?? []).map(normalizeClient);
         setRows(normalized);
       }
     };
@@ -61,11 +74,44 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
     return () => {
       cancelled = true;
     };
-  }, [user.id, supabase, refreshKey, isEnabled]);
+  }, [user.id, refreshKey, isEnabled]);
 
   useEffect(() => {
     onRowsChange?.(rows);
   }, [rows, onRowsChange]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQuery(query.trim()), 120);
+    return () => window.clearTimeout(t);
+  }, [query]);
+
+  const filteredRows = useMemo(() => {
+    const q = debouncedQuery.toLowerCase();
+
+    return rows.filter((c) => {
+      if (quickFilters.withEmail && !c.email) return false;
+      if (quickFilters.withPhone && !c.phone) return false;
+      if (quickFilters.withTags) {
+        const tags = Array.isArray(c.tags) ? c.tags.filter((t) => (t ?? '').trim().length > 0) : [];
+        if (tags.length === 0) return false;
+      }
+
+      if (!q) return true;
+
+      const tags = Array.isArray(c.tags) ? c.tags.join(' ') : '';
+      const hay = `${c.first_name ?? ''} ${c.last_name ?? ''} ${c.email ?? ''} ${c.phone ?? ''} ${c.address ?? ''} ${tags}`
+        .toLowerCase()
+        .trim();
+
+      return hay.includes(q);
+    });
+  }, [rows, debouncedQuery, quickFilters.withEmail, quickFilters.withPhone, quickFilters.withTags]);
+
+  const resetFilters = () => {
+    setQuery('');
+    setDebouncedQuery('');
+    setQuickFilters({ withEmail: false, withPhone: false, withTags: false });
+  };
 
   const handleEditClient = (client: Client) => {
     setEditingClient(normalizeClient(client));
@@ -107,9 +153,70 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
         </div>
       )}
 
+      {/* Toolbar */}
+      <div className="card-glass p-4 sm:p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">Clienti</p>
+                <p className="text-xs text-muted">
+                  Mostrati <span className="font-semibold text-foreground">{filteredRows.length}</span> su{' '}
+                  <span className="font-semibold text-foreground">{rows.length}</span>
+                </p>
+              </div>
+              {(query.length > 0 || quickFilters.withEmail || quickFilters.withPhone || quickFilters.withTags) && (
+                <button type="button" onClick={resetFilters} className="btn btn-ghost text-xs">
+                  Reset
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <svg className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="input-field pl-10"
+                  placeholder="Cerca per nome, email, telefono, indirizzo, tag…"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setQuickFilters((p) => ({ ...p, withEmail: !p.withEmail }))}
+                  className={quickFilters.withEmail ? 'btn btn-primary text-xs py-2' : 'btn btn-outline-secondary text-xs py-2'}
+                >
+                  Con email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickFilters((p) => ({ ...p, withPhone: !p.withPhone }))}
+                  className={quickFilters.withPhone ? 'btn btn-primary text-xs py-2' : 'btn btn-outline-secondary text-xs py-2'}
+                >
+                  Con telefono
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuickFilters((p) => ({ ...p, withTags: !p.withTags }))}
+                  className={quickFilters.withTags ? 'btn btn-primary text-xs py-2' : 'btn btn-outline-secondary text-xs py-2'}
+                >
+                  Con tag
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="sm:hidden">
         <ClientMobileCards
-          clients={rows}
+          clients={filteredRows}
+          onAddClient={onAddClient}
           flippedCards={flippedCards}
           onFlip={handleFlip}
           onEdit={handleEditClient}
@@ -118,7 +225,8 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
       </div>
 
       <ClientDesktopTable
-        clients={rows}
+        clients={filteredRows}
+        onAddClient={onAddClient}
         onSelect={(client) => {
           setSelectedClient(client);
           setIsDetailModalOpen(true);
@@ -127,7 +235,7 @@ export function ClientDashboard({ user, onRowsChange, isStatsModalOpen, onStatsC
         onDeleted={handleClientDeleted}
       />
 
-      <ClientTabletTable clients={rows} onEdit={handleEditClient} onDeleted={handleClientDeleted} />
+      <ClientTabletTable clients={filteredRows} onAddClient={onAddClient} onEdit={handleEditClient} onDeleted={handleClientDeleted} />
 
       <ClientEditModal
         client={editingClient}

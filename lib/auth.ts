@@ -1,5 +1,6 @@
-import { createHash, randomBytes } from 'crypto';
-import { getServiceSupabaseClient } from './supabaseServer';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { createHash, randomBytes, randomUUID } from 'crypto';
+import { dbQuery } from './mysql';
 
 export interface User {
   id: string;
@@ -28,6 +29,21 @@ export interface AuthResult {
   error: string | null;
 }
 
+function parseJsonMaybe<T>(value: unknown, fallback: T): T {
+  if (value == null) return fallback;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      return fallback;
+    }
+  }
+  if (typeof value === 'object') return value as T;
+  return fallback;
+}
+
 // Hash password con SHA-256 (per produzione considerare bcrypt/argon2)
 export function hashPassword(password: string): string {
   return createHash('sha256').update(password).digest('hex');
@@ -49,71 +65,77 @@ export async function createSession(
   userAgent?: string,
   ipAddress?: string
 ): Promise<Session> {
-  const supabase = getServiceSupabaseClient();
-  
   const token = generateToken();
   const refreshToken = generateToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30); // 30 giorni
+  const id = randomUUID();
 
-  const { data, error } = await supabase
-    .from('sessions')
-    .insert({
+  await dbQuery(
+    `INSERT INTO sessions (id, user_id, token, refresh_token, expires_at, user_agent, ip_address, last_activity_at)
+     VALUES (:id, :user_id, :token, :refresh_token, :expires_at, :user_agent, :ip_address, :last_activity_at)`,
+    {
+      id,
       user_id: userId,
       token,
       refresh_token: refreshToken,
-      expires_at: expiresAt.toISOString(),
-      user_agent: userAgent,
-      ip_address: ipAddress,
-    })
-    .select()
-    .single();
+      expires_at: expiresAt.toISOString().slice(0, 23).replace('T', ' '),
+      user_agent: userAgent ?? null,
+      ip_address: ipAddress ?? null,
+      last_activity_at: new Date().toISOString().slice(0, 23).replace('T', ' '),
+    }
+  );
 
-  if (error) {
-    throw new Error(`Failed to create session: ${error.message}`);
-  }
-
-  return data as Session;
+  return {
+    id,
+    user_id: userId,
+    token,
+    refresh_token: refreshToken,
+    expires_at: expiresAt.toISOString(),
+    created_at: new Date().toISOString(),
+  };
 }
 
 // Verifica token e ottieni sessione
 export async function getSessionFromToken(token: string): Promise<{ user: User; session: Session } | null> {
-  const supabase = getServiceSupabaseClient();
+  const sessions = await dbQuery<any>(
+    `SELECT * FROM sessions WHERE token = :token AND expires_at > NOW(3) LIMIT 1`,
+    { token }
+  );
+  const sessionRow = sessions[0];
+  if (!sessionRow) return null;
 
-  // Ottieni sessione
-  const { data: session, error: sessionError } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('token', token)
-    .gt('expires_at', new Date().toISOString())
-    .single();
+  const users = await dbQuery<any>(
+    `SELECT * FROM users WHERE id = :id AND is_active = 1 LIMIT 1`,
+    { id: sessionRow.user_id }
+  );
+  const userRow = users[0];
+  if (!userRow) return null;
 
-  if (sessionError || !session) {
-    return null;
-  }
+  await dbQuery(`UPDATE sessions SET last_activity_at = NOW(3) WHERE id = :id`, { id: sessionRow.id });
 
-  // Ottieni utente
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', session.user_id)
-    .eq('is_active', true)
-    .single();
-
-  if (userError || !user) {
-    return null;
-  }
-
-  // Aggiorna last_activity_at
-  await supabase
-    .from('sessions')
-    .update({ last_activity_at: new Date().toISOString() })
-    .eq('id', session.id);
-
-  return {
-    user: user as User,
-    session: session as Session,
+  const user: User = {
+    id: userRow.id,
+    email: userRow.email,
+    email_verified: Boolean(userRow.email_verified),
+    first_name: userRow.first_name ?? null,
+    last_name: userRow.last_name ?? null,
+    user_metadata: parseJsonMaybe<Record<string, unknown>>(userRow.user_metadata, {}),
+    app_metadata: parseJsonMaybe<Record<string, unknown>>(userRow.app_metadata, {}),
+    last_sign_in_at: userRow.last_sign_in_at ? new Date(userRow.last_sign_in_at).toISOString() : null,
+    created_at: new Date(userRow.created_at).toISOString(),
   };
+
+  const session: Session = {
+    id: sessionRow.id,
+    user_id: sessionRow.user_id,
+    token: sessionRow.token,
+    refresh_token: sessionRow.refresh_token ?? null,
+    expires_at: new Date(sessionRow.expires_at).toISOString(),
+    created_at: new Date(sessionRow.created_at).toISOString(),
+  };
+
+  return { user, session };
 }
 
 // Registra utente (senza conferma email - attivo immediatamente)
@@ -122,16 +144,8 @@ export async function signUp(
   password: string,
   metadata?: { first_name?: string; last_name?: string }
 ): Promise<AuthResult> {
-  const supabase = getServiceSupabaseClient();
-
-  // Verifica se email esiste già
-  const { data: existing } = await supabase
-    .from('users')
-    .select('id')
-    .eq('email', email.toLowerCase())
-    .single();
-
-  if (existing) {
+  const existing = await dbQuery<any>(`SELECT id FROM users WHERE email = :email LIMIT 1`, { email: email.toLowerCase() });
+  if (existing[0]) {
     return {
       user: null,
       session: null,
@@ -141,37 +155,44 @@ export async function signUp(
 
   // Crea utente ATTIVO (email_verified = true, confirmed_at = now)
   const passwordHash = hashPassword(password);
+  const userId = randomUUID();
+  const now = new Date();
 
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .insert({
+  await dbQuery(
+    `INSERT INTO users (id, email, password_hash, email_verified, confirmed_at, first_name, last_name, user_metadata, app_metadata, created_at)
+     VALUES (:id, :email, :password_hash, 1, :confirmed_at, :first_name, :last_name, :user_metadata, :app_metadata, :created_at)`,
+    {
+      id: userId,
       email: email.toLowerCase(),
       password_hash: passwordHash,
-      email_verified: true, // Attivo subito senza conferma
-      confirmed_at: new Date().toISOString(), // Confermato automaticamente
-      first_name: metadata?.first_name,
-      last_name: metadata?.last_name,
-      user_metadata: metadata || {},
-    })
-    .select()
-    .single();
+      confirmed_at: now.toISOString().slice(0, 23).replace('T', ' '),
+      first_name: metadata?.first_name ?? null,
+      last_name: metadata?.last_name ?? null,
+      user_metadata: JSON.stringify(metadata ?? {}),
+      app_metadata: JSON.stringify({}),
+      created_at: now.toISOString().slice(0, 23).replace('T', ' '),
+    }
+  );
 
-  if (userError || !user) {
-    return {
-      user: null,
-      session: null,
-      error: userError?.message || 'Errore durante la registrazione',
-    };
-  }
+  await dbQuery(
+    `INSERT INTO auth_audit_log (id, user_id, event_type, created_at) VALUES (:id, :user_id, :event_type, :created_at)`,
+    { id: randomUUID(), user_id: userId, event_type: 'signup', created_at: now.toISOString().slice(0, 23).replace('T', ' ') }
+  );
 
-  // Log audit
-  await supabase.from('auth_audit_log').insert({
-    user_id: user.id,
-    event_type: 'signup',
-  });
+  const user: User = {
+    id: userId,
+    email: email.toLowerCase(),
+    email_verified: true,
+    first_name: metadata?.first_name ?? null,
+    last_name: metadata?.last_name ?? null,
+    user_metadata: metadata ?? {},
+    app_metadata: {},
+    last_sign_in_at: null,
+    created_at: now.toISOString(),
+  };
 
   return {
-    user: user as User,
+    user,
     session: null,
     error: null,
   };
@@ -184,23 +205,18 @@ export async function signIn(
   userAgent?: string,
   ipAddress?: string
 ): Promise<AuthResult> {
-  const supabase = getServiceSupabaseClient();
+  const userRows = await dbQuery<any>(
+    `SELECT * FROM users WHERE email = :email AND is_active = 1 LIMIT 1`,
+    { email: email.toLowerCase() }
+  );
+  const user = userRows[0];
 
-  // Ottieni utente
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .eq('is_active', true)
-    .single();
-
-  if (userError || !user) {
-    // Log tentativo fallito
-    await supabase.from('auth_audit_log').insert({
-      event_type: 'login_failed',
-      ip_address: ipAddress,
-      metadata: { email, reason: 'user_not_found' },
-    });
+  if (!user) {
+    await dbQuery(
+      `INSERT INTO auth_audit_log (id, user_id, event_type, ip_address, metadata, created_at)
+       VALUES (:id, NULL, :event_type, :ip_address, :metadata, NOW(3))`,
+      { id: randomUUID(), event_type: 'login_failed', ip_address: ipAddress ?? null, metadata: JSON.stringify({ email, reason: 'user_not_found' }) }
+    );
 
     return {
       user: null,
@@ -211,13 +227,11 @@ export async function signIn(
 
   // Verifica password
   if (!verifyPassword(password, user.password_hash)) {
-    // Log tentativo fallito
-    await supabase.from('auth_audit_log').insert({
-      user_id: user.id,
-      event_type: 'login_failed',
-      ip_address: ipAddress,
-      metadata: { reason: 'wrong_password' },
-    });
+    await dbQuery(
+      `INSERT INTO auth_audit_log (id, user_id, event_type, ip_address, metadata, created_at)
+       VALUES (:id, :user_id, :event_type, :ip_address, :metadata, NOW(3))`,
+      { id: randomUUID(), user_id: user.id, event_type: 'login_failed', ip_address: ipAddress ?? null, metadata: JSON.stringify({ reason: 'wrong_password' }) }
+    );
 
     return {
       user: null,
@@ -230,21 +244,27 @@ export async function signIn(
   const session = await createSession(user.id, userAgent, ipAddress);
 
   // Aggiorna last_sign_in_at
-  await supabase
-    .from('users')
-    .update({ last_sign_in_at: new Date().toISOString() })
-    .eq('id', user.id);
+  await dbQuery(`UPDATE users SET last_sign_in_at = NOW(3) WHERE id = :id`, { id: user.id });
+  await dbQuery(
+    `INSERT INTO auth_audit_log (id, user_id, event_type, ip_address, user_agent, created_at)
+     VALUES (:id, :user_id, :event_type, :ip_address, :user_agent, NOW(3))`,
+    { id: randomUUID(), user_id: user.id, event_type: 'login_success', ip_address: ipAddress ?? null, user_agent: userAgent ?? null }
+  );
 
-  // Log successo
-  await supabase.from('auth_audit_log').insert({
-    user_id: user.id,
-    event_type: 'login_success',
-    ip_address: ipAddress,
-    user_agent: userAgent,
-  });
+  const outUser: User = {
+    id: user.id,
+    email: user.email,
+    email_verified: Boolean(user.email_verified),
+    first_name: user.first_name ?? null,
+    last_name: user.last_name ?? null,
+    user_metadata: parseJsonMaybe<Record<string, unknown>>(user.user_metadata, {}),
+    app_metadata: parseJsonMaybe<Record<string, unknown>>(user.app_metadata, {}),
+    last_sign_in_at: new Date().toISOString(),
+    created_at: new Date(user.created_at).toISOString(),
+  };
 
   return {
-    user: user as User,
+    user: outUser,
     session,
     error: null,
   };
@@ -252,23 +272,14 @@ export async function signIn(
 
 // Logout
 export async function signOut(token: string): Promise<void> {
-  const supabase = getServiceSupabaseClient();
-
-  const { data: session } = await supabase
-    .from('sessions')
-    .select('user_id')
-    .eq('token', token)
-    .single();
-
-  // Elimina sessione
-  await supabase.from('sessions').delete().eq('token', token);
-
-  // Log
-  if (session) {
-    await supabase.from('auth_audit_log').insert({
-      user_id: session.user_id,
-      event_type: 'logout',
-    });
+  const sessions = await dbQuery<any>(`SELECT user_id FROM sessions WHERE token = :token LIMIT 1`, { token });
+  const session = sessions[0];
+  await dbQuery(`DELETE FROM sessions WHERE token = :token`, { token });
+  if (session?.user_id) {
+    await dbQuery(
+      `INSERT INTO auth_audit_log (id, user_id, event_type, created_at) VALUES (:id, :user_id, :event_type, NOW(3))`,
+      { id: randomUUID(), user_id: session.user_id, event_type: 'logout' }
+    );
   }
 }
 
@@ -281,50 +292,31 @@ export async function confirmEmail(_token: string): Promise<boolean> {
 
 // Richiedi reset password
 export async function requestPasswordReset(email: string): Promise<{ token: string | null; error: string | null }> {
-  const supabase = getServiceSupabaseClient();
-
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('email', email.toLowerCase())
-    .eq('is_active', true)
-    .single();
-
-  if (error || !user) {
+  const users = await dbQuery<any>(`SELECT * FROM users WHERE email = :email AND is_active = 1 LIMIT 1`, { email: email.toLowerCase() });
+  const user = users[0];
+  if (!user) {
     // Per sicurezza, non rivelare se l'email esiste o meno
     return { token: null, error: null };
   }
 
   const recoveryToken = generateToken();
-
-  await supabase
-    .from('users')
-    .update({
-      recovery_token: recoveryToken,
-      recovery_sent_at: new Date().toISOString(),
-    })
-    .eq('id', user.id);
-
-  // Log
-  await supabase.from('auth_audit_log').insert({
-    user_id: user.id,
-    event_type: 'password_reset_requested',
-  });
+  await dbQuery(
+    `UPDATE users SET recovery_token = :token, recovery_sent_at = NOW(3) WHERE id = :id`,
+    { token: recoveryToken, id: user.id }
+  );
+  await dbQuery(
+    `INSERT INTO auth_audit_log (id, user_id, event_type, created_at) VALUES (:id, :user_id, :event_type, NOW(3))`,
+    { id: randomUUID(), user_id: user.id, event_type: 'password_reset_requested' }
+  );
 
   return { token: recoveryToken, error: null };
 }
 
 // Reset password
 export async function resetPassword(token: string, newPassword: string): Promise<boolean> {
-  const supabase = getServiceSupabaseClient();
-
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('recovery_token', token)
-    .single();
-
-  if (error || !user) {
+  const users = await dbQuery<any>(`SELECT * FROM users WHERE recovery_token = :token LIMIT 1`, { token });
+  const user = users[0];
+  if (!user) {
     return false;
   }
 
@@ -339,24 +331,15 @@ export async function resetPassword(token: string, newPassword: string): Promise
 
   // Aggiorna password
   const passwordHash = hashPassword(newPassword);
-
-  await supabase
-    .from('users')
-    .update({
-      password_hash: passwordHash,
-      recovery_token: null,
-      recovery_sent_at: null,
-    })
-    .eq('id', user.id);
-
-  // Elimina tutte le sessioni esistenti per sicurezza
-  await supabase.from('sessions').delete().eq('user_id', user.id);
-
-  // Log
-  await supabase.from('auth_audit_log').insert({
-    user_id: user.id,
-    event_type: 'password_reset_completed',
-  });
+  await dbQuery(
+    `UPDATE users SET password_hash = :hash, recovery_token = NULL, recovery_sent_at = NULL WHERE id = :id`,
+    { hash: passwordHash, id: user.id }
+  );
+  await dbQuery(`DELETE FROM sessions WHERE user_id = :id`, { id: user.id });
+  await dbQuery(
+    `INSERT INTO auth_audit_log (id, user_id, event_type, created_at) VALUES (:id, :user_id, :event_type, NOW(3))`,
+    { id: randomUUID(), user_id: user.id, event_type: 'password_reset_completed' }
+  );
 
   return true;
 }
@@ -372,20 +355,15 @@ export async function updateUser(
     user_metadata?: Record<string, unknown>;
   }
 ): Promise<{ user: User | null; error: string | null }> {
-  const supabase = getServiceSupabaseClient();
-
   const updateData: Record<string, unknown> = {};
 
   if (updates.email) {
     // Verifica che la nuova email non sia già in uso
-    const { data: existing } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', updates.email.toLowerCase())
-      .neq('id', userId)
-      .single();
-
-    if (existing) {
+    const existing = await dbQuery<any>(
+      `SELECT id FROM users WHERE email = :email AND id <> :id LIMIT 1`,
+      { email: updates.email.toLowerCase(), id: userId }
+    );
+    if (existing[0]) {
       return { user: null, error: 'Email già in uso' };
     }
 
@@ -409,57 +387,58 @@ export async function updateUser(
     updateData.user_metadata = updates.user_metadata;
   }
 
-  const { data: user, error } = await supabase
-    .from('users')
-    .update(updateData)
-    .eq('id', userId)
-    .select()
-    .single();
-
-  if (error || !user) {
-    return { user: null, error: error?.message || 'Errore durante l\'aggiornamento' };
+  const sets: string[] = [];
+  const params: Record<string, any> = { id: userId };
+  for (const [k, v] of Object.entries(updateData)) {
+    sets.push(`${k} = :${k}`);
+    params[k] = k === 'user_metadata' ? JSON.stringify(v) : v;
+  }
+  if (sets.length === 0) {
+    const current = await getUserById(userId);
+    return { user: current, error: null };
   }
 
-  // Log
-  await supabase.from('auth_audit_log').insert({
-    user_id: userId,
-    event_type: 'user_updated',
-    metadata: { fields: Object.keys(updateData) },
-  });
+  await dbQuery(`UPDATE users SET ${sets.join(', ')} WHERE id = :id`, params);
+  await dbQuery(
+    `INSERT INTO auth_audit_log (id, user_id, event_type, metadata, created_at)
+     VALUES (:id, :user_id, :event_type, :metadata, NOW(3))`,
+    { id: randomUUID(), user_id: userId, event_type: 'user_updated', metadata: JSON.stringify({ fields: Object.keys(updateData) }) }
+  );
 
-  return { user: user as User, error: null };
+  const updated = await getUserById(userId);
+  return { user: updated, error: null };
 }
 
 // Ottieni utente da ID
 export async function getUserById(userId: string): Promise<User | null> {
-  const supabase = getServiceSupabaseClient();
-
-  const { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .eq('is_active', true)
-    .single();
-
-  if (error || !user) {
-    return null;
-  }
-
-  return user as User;
+  const users = await dbQuery<any>(`SELECT * FROM users WHERE id = :id AND is_active = 1 LIMIT 1`, { id: userId });
+  const u = users[0];
+  if (!u) return null;
+  return {
+    id: u.id,
+    email: u.email,
+    email_verified: Boolean(u.email_verified),
+    first_name: u.first_name ?? null,
+    last_name: u.last_name ?? null,
+    user_metadata: parseJsonMaybe<Record<string, unknown>>(u.user_metadata, {}),
+    app_metadata: parseJsonMaybe<Record<string, unknown>>(u.app_metadata, {}),
+    last_sign_in_at: u.last_sign_in_at ? new Date(u.last_sign_in_at).toISOString() : null,
+    created_at: new Date(u.created_at).toISOString(),
+  };
 }
 
 // Lista tutti gli utenti (solo per admin)
 export async function listUsers(): Promise<User[]> {
-  const supabase = getServiceSupabaseClient();
-
-  const { data: users, error } = await supabase
-    .from('users')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error || !users) {
-    return [];
-  }
-
-  return users as User[];
+  const users = await dbQuery<any>(`SELECT * FROM users ORDER BY created_at DESC`);
+  return users.map((u) => ({
+    id: u.id,
+    email: u.email,
+    email_verified: Boolean(u.email_verified),
+    first_name: u.first_name ?? null,
+    last_name: u.last_name ?? null,
+    user_metadata: parseJsonMaybe<Record<string, unknown>>(u.user_metadata, {}),
+    app_metadata: parseJsonMaybe<Record<string, unknown>>(u.app_metadata, {}),
+    last_sign_in_at: u.last_sign_in_at ? new Date(u.last_sign_in_at).toISOString() : null,
+    created_at: new Date(u.created_at).toISOString(),
+  }));
 }

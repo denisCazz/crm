@@ -102,7 +102,7 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
             <img 
               src={logoUrl} 
               alt={brandName} 
-              className="h-16 w-16 mx-auto mb-4 rounded-2xl object-contain bg-surface shadow-theme-md"
+              className="h-[72px] w-[72px] mx-auto mb-4 rounded-2xl object-contain bg-surface border border-border shadow-theme-md"
               decoding="async"
               loading="eager"
               fetchPriority="high"
@@ -111,7 +111,7 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
             <img
               src="/CRM.png"
               alt={brandName}
-              className="h-24 w-24 mx-auto mb-4 rounded-2xl object-contain bg-surface shadow-theme-md"
+              className="h-[72px] w-[72px] mx-auto mb-4 rounded-2xl object-contain bg-surface border border-border shadow-theme-md"
               decoding="async"
               loading="eager"
               fetchPriority="high"
@@ -126,7 +126,7 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
         </div>
 
         {/* Login Form */}
-        <div className="card-elevated p-6 sm:p-8">
+        <div className="card-glass p-6 sm:p-8">
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-center text-foreground mb-2">
               {authMode === "signin" ? "Bentornato" : "Crea il tuo account"}
@@ -167,17 +167,27 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
                   required
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                  className="input-field pr-20"
+                  className="input-field pr-11"
                   placeholder={authMode === "signin" ? "La tua password" : "Crea una password sicura"}
                   autoComplete={authMode === "signin" ? "current-password" : "new-password"}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPwd((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground 
-                           transition-colors duration-200 text-xs font-medium"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
+                  title={showPwd ? "Nascondi password" : "Mostra password"}
+                  tabIndex={-1}
                 >
-                  {showPwd ? "Nascondi" : "Mostra"}
+                  {showPwd ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
                 </button>
               </div>
               {authMode === "signup" && (
@@ -229,7 +239,7 @@ export default function LoginForm({ brandName = "Bitora CRM", logoUrl }: LoginFo
               <button
                 type="button"
                 onClick={() => setAuthMode((m) => (m === "signin" ? "signup" : "signin"))}
-                className="btn btn-secondary w-full"
+                className="btn btn-outline-secondary w-full"
               >
                 {authMode === "signin" ? "Crea un nuovo account" : "Accedi al tuo account"}
               </button>

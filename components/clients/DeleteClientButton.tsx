@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useToast } from '../Toaster';
-import { useSupabaseSafe } from '../../lib/supabase';
+import { getStoredSession } from '../../lib/authClient';
 
 interface DeleteClientButtonProps {
   clientId: string;
@@ -28,17 +28,22 @@ export function DeleteClientButton({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
-  const supabase = useSupabaseSafe();
 
   async function doDelete() {
     if (disabled || busy) return;
     if (!confirm(confirmMessage)) return;
     setBusy(true);
     setErr(null);
-    if (!supabase) return;
     try {
-      const { error } = await supabase.from('clients').delete().eq('id', clientId);
-      if (error) throw error;
+      const session = getStoredSession();
+      if (!session) throw new Error('Sessione scaduta. Ricarica la pagina.');
+
+      const res = await fetch(`/api/clients/${encodeURIComponent(clientId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Errore eliminazione cliente');
       onDeleted();
       push('success', 'Cliente eliminato con successo!');
     } catch (e: unknown) {

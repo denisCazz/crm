@@ -4,8 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { AddressAutocomplete } from '../AddressAutocomplete';
 import { TagInput } from '../TagInput';
 import { useToast } from '../Toaster';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { Client } from '../../types';
+import { getStoredSession } from '../../lib/authClient';
 
 interface ClientEditModalProps {
   client: Client | null;
@@ -27,7 +27,6 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { push } = useToast();
-  const supabase = useSupabaseSafe();
 
   useEffect(() => {
     if (client && isOpen) {
@@ -65,13 +64,16 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
   async function updateClient(e: React.FormEvent) {
     e.preventDefault();
     if (!client) return;
-    if (!supabase) return;
     setSaving(true);
     setErr(null);
     try {
-      const { data, error } = await supabase
-        .from('clients')
-        .update({
+      const session = getStoredSession();
+      if (!session) throw new Error('Sessione scaduta. Ricarica la pagina.');
+
+      const res = await fetch(`/api/clients/${encodeURIComponent(client.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.token}` },
+        body: JSON.stringify({
           first_name: form.first_name || null,
           last_name: form.last_name || null,
           address: form.address || null,
@@ -79,12 +81,12 @@ export function ClientEditModal({ client, isOpen, onClose, onUpdated }: ClientEd
           phone: form.phone || null,
           email: form.email || null,
           tags: form.tags.length > 0 ? form.tags : null,
-        })
-        .eq('id', client.id)
-        .select('id, owner_id, first_name, last_name, address, notes, phone, email, tags, lat, lon, created_at')
-        .single();
-
-      if (error) throw error;
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error || 'Errore aggiornamento cliente');
+      const data = json?.client as Client | undefined;
+      if (!data) throw new Error('Risposta non valida dal server');
 
       if (data && data.address !== client.address) {
         await fetch('/api/geocode', {

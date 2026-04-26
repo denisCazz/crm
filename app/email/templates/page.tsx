@@ -6,10 +6,9 @@ import { useRouter } from 'next/navigation';
 
 import { ToastProvider, useToast } from '../../../components/Toaster';
 import { EmailGate } from '../_components/EmailGate';
-import { useSupabaseSafe } from '../../../lib/supabase';
 import { AppLayout } from '../../../components/layout/AppLayout';
 import type { EmailTemplate } from '../../../types';
-import { signOut as authSignOut } from '../../../lib/authClient';
+import { signOut as authSignOut, getStoredSession } from '../../../lib/authClient';
 
 function renderTemplate(input: string, vars: Record<string, string>): string {
   return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? '');
@@ -23,8 +22,7 @@ const templateVars = [
   { key: 'phone', label: 'Telefono' },
 ] as const;
 
-function TemplatesInner({ ownerId }: { ownerId: string }) {
-  const supabase = useSupabaseSafe();
+function TemplatesInner({ ownerId: _ownerId }: { ownerId: string }) {
   const { push } = useToast();
 
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
@@ -47,22 +45,21 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
 
   const loadTemplates = useCallback(async () => {
-    if (!supabase) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('email_templates')
-        .select('*')
-        .eq('owner_id', ownerId)
-        .order('updated_at', { ascending: false });
-      if (error) throw error;
-      setTemplates((data ?? []) as EmailTemplate[]);
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) throw new Error('Sessione non valida');
+      const res = await fetch('/api/email/templates', { headers: { Authorization: `Bearer ${token}` } });
+      const json = (await res.json()) as { templates?: EmailTemplate[]; error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore caricamento template');
+      setTemplates(json.templates ?? []);
     } catch (e: unknown) {
       push('error', e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [supabase, ownerId, push]);
+  }, [push]);
 
   useEffect(() => {
     void loadTemplates();
@@ -110,28 +107,21 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
   }, [form.subject, form.body_html, previewVars]);
 
   const handleSave = useCallback(async () => {
-    if (!supabase) return;
     const name = form.name.trim();
     const subject = form.subject.trim();
     const bodyHtml = form.body_html.trim();
 
-    if (!name) {
-      push('error', 'Inserisci un nome template.');
-      return;
-    }
-    if (!subject) {
-      push('error', 'Inserisci un subject.');
-      return;
-    }
-    if (!bodyHtml) {
-      push('error', 'Inserisci il body HTML.');
-      return;
-    }
+    if (!name) { push('error', 'Inserisci un nome template.'); return; }
+    if (!subject) { push('error', 'Inserisci un subject.'); return; }
+    if (!bodyHtml) { push('error', 'Inserisci il body HTML.'); return; }
+
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) { push('error', 'Sessione non valida.'); return; }
 
     setSaving(true);
     try {
       const payload = {
-        owner_id: ownerId,
         name,
         subject,
         body_html: bodyHtml,
@@ -139,11 +129,19 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
       };
 
       const res = form.id
-        ? supabase.from('email_templates').update(payload).eq('id', form.id)
-        : supabase.from('email_templates').insert(payload);
+        ? await fetch(`/api/email/templates/${form.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/email/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify(payload),
+          });
 
-      const { error } = await res;
-      if (error) throw error;
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore salvataggio');
 
       push('success', form.id ? 'Template aggiornato.' : 'Template creato.');
       await loadTemplates();
@@ -153,17 +151,24 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
     } finally {
       setSaving(false);
     }
-  }, [supabase, ownerId, form, push, loadTemplates, startNew]);
+  }, [form, push, loadTemplates, startNew]);
 
   const handleDelete = useCallback(
     async (tpl: EmailTemplate) => {
-      if (!supabase) return;
       if (!confirm(`Eliminare il template "${tpl.name}"?`)) return;
+
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) { push('error', 'Sessione non valida.'); return; }
 
       setDeleting((p) => ({ ...p, [tpl.id]: true }));
       try {
-        const { error } = await supabase.from('email_templates').delete().eq('id', tpl.id);
-        if (error) throw error;
+        const res = await fetch(`/api/email/templates/${tpl.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? 'Errore eliminazione');
         push('success', 'Template eliminato.');
         if (selectedId === tpl.id) startNew();
         await loadTemplates();
@@ -173,7 +178,7 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
         setDeleting((p) => ({ ...p, [tpl.id]: false }));
       }
     },
-    [supabase, push, selectedId, startNew, loadTemplates]
+    [push, selectedId, startNew, loadTemplates]
   );
 
   return (
@@ -352,7 +357,6 @@ function TemplatesInner({ ownerId }: { ownerId: string }) {
 }
 
 function TemplatesPageInner() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
 
   return (

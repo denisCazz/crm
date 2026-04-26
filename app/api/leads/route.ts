@@ -1,11 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Usa service role per inserire lead senza autenticazione utente
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+import { dbQuery } from '@/lib/mysql';
+import { randomUUID } from 'crypto';
 
 // Helper per aggiungere header CORS
 function corsHeaders() {
@@ -39,26 +34,12 @@ export async function POST(request: Request) {
     }
 
     // Trova l'owner associato all'API key
-    const { data: settings, error: settingsError } = await supabaseAdmin
-      .from('app_settings')
-      .select('owner_id')
-      .eq('api_key', apiKey)
-      .single();
-
-    if (settingsError) {
-      const msg = settingsError.message ?? String(settingsError);
-      if (msg.includes('column') && msg.includes('app_settings.api_key') && msg.includes('does not exist')) {
-        return NextResponse.json(
-          {
-            error:
-              "Database schema mismatch: missing public.app_settings.api_key. Run the migration in supabase/sql/api_keys.sql (or re-run supabase/sql/setup_all.sql) and then retry.",
-          },
-          { status: 500, headers: corsHeaders() }
-        );
-      }
-    }
-
-    if (settingsError || !settings) {
+    const settingsRows = await dbQuery<any>(
+      `SELECT owner_id FROM app_settings WHERE api_key = :api_key LIMIT 1`,
+      { api_key: apiKey }
+    );
+    const settings = settingsRows[0];
+    if (!settings) {
       return NextResponse.json(
         { error: 'API key non valida' },
         { status: 401, headers: corsHeaders() }
@@ -80,33 +61,35 @@ export async function POST(request: Request) {
 
     // Controlla se esiste già un client con stessa email per questo owner
     if (body.email) {
-      const { data: existingClient } = await supabaseAdmin
-        .from('clients')
-        .select('id')
-        .eq('owner_id', ownerId)
-        .eq('email', body.email.toLowerCase().trim())
-        .maybeSingle();
-
-      if (existingClient) {
+      const existingRows = await dbQuery<any>(
+        `SELECT id FROM clients WHERE owner_id = :owner_id AND LOWER(email) = :email LIMIT 1`,
+        { owner_id: ownerId, email: body.email.toLowerCase().trim() }
+      );
+      const existingClient = existingRows[0];
+      if (existingClient?.id) {
         // Aggiorna il client esistente invece di crearne uno nuovo
-        const { error: updateError } = await supabaseAdmin
-          .from('clients')
-          .update({
-            first_name: body.first_name || undefined,
-            last_name: body.last_name || undefined,
-            phone: body.phone || undefined,
-            contact_request: body.message || undefined,
-            notes: body.message?.trim() || undefined,
+        await dbQuery(
+          `UPDATE clients SET
+            first_name = COALESCE(NULLIF(:first_name,''), first_name),
+            last_name = COALESCE(NULLIF(:last_name,''), last_name),
+            phone = COALESCE(NULLIF(:phone,''), phone),
+            contact_request = :contact_request,
+            notes = :notes,
+            lead_source = :lead_source,
+            tags = :tags
+           WHERE id = :id AND owner_id = :owner_id`,
+          {
+            id: existingClient.id,
+            owner_id: ownerId,
+            first_name: body.first_name?.trim() ?? '',
+            last_name: body.last_name?.trim() ?? '',
+            phone: body.phone?.trim() ?? '',
+            contact_request: body.message?.trim() ?? null,
+            notes: body.message?.trim() ?? null,
             lead_source: body.source || 'website',
-            tags: body.tags || undefined,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingClient.id);
-
-        if (updateError) {
-          console.error('Errore aggiornamento lead:', updateError);
-          return NextResponse.json({ error: updateError.message }, { status: 500, headers: corsHeaders() });
-        }
+            tags: JSON.stringify(body.tags || []),
+          }
+        );
 
         return NextResponse.json({
           success: true,
@@ -118,9 +101,12 @@ export async function POST(request: Request) {
     }
 
     // Inserisci nuovo client
-    const { data: newClient, error: insertError } = await supabaseAdmin
-      .from('clients')
-      .insert({
+    const newId = randomUUID();
+    await dbQuery(
+      `INSERT INTO clients (id, owner_id, first_name, last_name, email, phone, contact_request, notes, lead_source, tags, status)
+       VALUES (:id, :owner_id, :first_name, :last_name, :email, :phone, :contact_request, :notes, :lead_source, :tags, 'new')`,
+      {
+        id: newId,
         owner_id: ownerId,
         first_name: body.first_name?.trim() || null,
         last_name: body.last_name?.trim() || null,
@@ -129,21 +115,14 @@ export async function POST(request: Request) {
         contact_request: body.message?.trim() || null,
         notes: body.message?.trim() || null,
         lead_source: body.source || 'website',
-        tags: body.tags || [],
-        status: 'new',
-      })
-      .select('id')
-      .single();
-
-    if (insertError) {
-      console.error('Errore inserimento lead:', insertError);
-      return NextResponse.json({ error: insertError.message }, { status: 500, headers: corsHeaders() });
-    }
+        tags: JSON.stringify(body.tags || []),
+      }
+    );
 
     return NextResponse.json({
       success: true,
       message: 'Lead creato con successo',
-      client_id: newClient.id,
+      client_id: newId,
       is_new: true,
     }, { headers: corsHeaders() });
 

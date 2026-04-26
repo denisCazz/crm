@@ -1,4 +1,5 @@
-import { getServiceSupabaseClient } from '@/lib/supabaseServer';
+import { dbQuery } from '@/lib/mysql';
+import { randomUUID } from 'crypto';
 
 type NewsletterLeadPayload = {
   email?: string;
@@ -83,19 +84,17 @@ export async function POST(req: Request): Promise<Response> {
   const inputTags = Array.isArray(payload.tags) ? payload.tags : [];
   const tags = uniqueStrings(['newsletter', ...inputTags]);
 
-  const supabase = getServiceSupabaseClient();
-
   // Se esiste già (stesso owner + email), aggiorna senza creare duplicati.
-  const { data: existing, error: existingError } = await supabase
-    .from('clients')
-    .select('id, first_name, last_name, phone, email, tags, notes')
-    .eq('owner_id', ownerId)
-    .ilike('email', email)
-    .maybeSingle();
-
-  if (existingError) {
-    return json(500, { ok: false, error: existingError.message });
-  }
+  const existingRows = await dbQuery<any>(
+    `SELECT id, first_name, last_name, phone, email, tags, notes
+     FROM clients
+     WHERE owner_id = :owner_id AND LOWER(email) = :email
+     LIMIT 1`,
+    { owner_id: ownerId, email }
+  );
+  const existing = existingRows[0]
+    ? { ...existingRows[0], tags: existingRows[0].tags ? JSON.parse(existingRows[0].tags) : null }
+    : null;
 
   if (existing?.id) {
     const mergedTags = uniqueStrings([...(existing.tags ?? []), ...tags]);
@@ -112,13 +111,25 @@ export async function POST(req: Request): Promise<Response> {
       update.notes = 'Iscrizione newsletter';
     }
 
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update(update)
-      .eq('id', existing.id)
-      .eq('owner_id', ownerId);
-
-    if (updateError) return json(500, { ok: false, error: updateError.message });
+    await dbQuery(
+      `UPDATE clients SET
+        lead_source = 'newsletter',
+        tags = :tags,
+        first_name = COALESCE(NULLIF(:first_name,''), first_name),
+        last_name = COALESCE(NULLIF(:last_name,''), last_name),
+        phone = COALESCE(NULLIF(:phone,''), phone),
+        notes = COALESCE(notes, :notes)
+       WHERE id = :id AND owner_id = :owner_id`,
+      {
+        id: existing.id,
+        owner_id: ownerId,
+        tags: mergedTags.length > 0 ? JSON.stringify(mergedTags) : null,
+        first_name,
+        last_name,
+        phone,
+        notes: 'Iscrizione newsletter',
+      }
+    );
     return json(200, { ok: true, id: existing.id, existing: true });
   }
 
@@ -134,12 +145,23 @@ export async function POST(req: Request): Promise<Response> {
     lead_source: 'newsletter',
   };
 
-  const { data: created, error: createError } = await supabase
-    .from('clients')
-    .insert(insert)
-    .select('id')
-    .single();
+  const id = randomUUID();
+  await dbQuery(
+    `INSERT INTO clients (id, owner_id, email, first_name, last_name, phone, notes, tags, status, lead_source)
+     VALUES (:id, :owner_id, :email, :first_name, :last_name, :phone, :notes, :tags, :status, :lead_source)`,
+    {
+      id,
+      owner_id: insert.owner_id,
+      email: insert.email,
+      first_name: insert.first_name,
+      last_name: insert.last_name,
+      phone: insert.phone,
+      notes: insert.notes,
+      tags: insert.tags ? JSON.stringify(insert.tags) : null,
+      status: insert.status,
+      lead_source: insert.lead_source,
+    }
+  );
 
-  if (createError) return json(500, { ok: false, error: createError.message });
-  return json(201, { ok: true, id: created.id, existing: false });
+  return json(201, { ok: true, id, existing: false });
 }

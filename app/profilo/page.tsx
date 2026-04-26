@@ -4,60 +4,14 @@ import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
 import { signOut as authSignOut, getStoredSession } from '../../lib/authClient';
 import type { User } from '../../lib/auth';
 import { useTheme } from '../../components/ThemeProvider';
 import { AppLayout } from '../../components/layout/AppLayout';
-import type { AppSettings, License } from '../../types';
+import type { AppSettings } from '../../types';
 import { getCachedBrand, setCachedBrand } from '../../lib/brandCache';
-
-const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
-  .split(',')
-  .map((email) => email.trim().toLowerCase())
-  .filter((email) => email.length > 0);
-
-function isAdminUser(user: User | null): boolean {
-  if (!user) return false;
-  const envAdmin = Boolean(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
-  const userMetadata = (user.user_metadata ?? {}) as Record<string, unknown>;
-  const appMetadata = (user.app_metadata ?? {}) as Record<string, unknown>;
-  const metadataAdmin = userMetadata['is_admin'] === true || appMetadata['role'] === 'admin';
-  return envAdmin || metadataAdmin;
-}
-
-function adminBypassLicense(user: User): License {
-  return {
-    id: 'admin-bypass',
-    user_id: user.id,
-    status: 'active',
-    expires_at: null,
-    plan: 'admin',
-    created_at: new Date().toISOString(),
-  } as License;
-}
-
-type LicenseState =
-  | { status: 'idle' }
-  | { status: 'checking' }
-  | { status: 'active'; license: License }
-  | { status: 'inactive'; reason: string }
-  | { status: 'error'; message: string };
-
-function isLicenseValid(data: License | null): { ok: true } | { ok: false; reason: string } {
-  if (!data) {
-    return { ok: false, reason: "Non è stata trovata alcuna licenza attiva associata a questo account." };
-  }
-  const now = Date.now();
-  const expiresAt = data.expires_at ? new Date(data.expires_at).getTime() : null;
-  const isExpired = typeof expiresAt === 'number' && !Number.isNaN(expiresAt) && expiresAt < now;
-  const isDisabled = data.status === 'inactive' || data.status === 'expired';
-  if (isExpired || isDisabled) {
-    return { ok: false, reason: isExpired ? 'La licenza è scaduta.' : 'La licenza risulta inattiva.' };
-  }
-  return { ok: true };
-}
+import { useLicense, isAdminUser, type LicenseState } from '../../lib/useLicense';
 
 function ThemeSection() {
   const { theme, setTheme } = useTheme();
@@ -102,13 +56,12 @@ function ThemeSection() {
 }
 
 function ProfileApp() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   const { push } = useToast();
 
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [licenseState, setLicenseState] = useState<LicenseState>({ status: 'idle' });
+  const licenseState: LicenseState = useLicense(user);
 
   const [settings, setSettings] = useState<Partial<AppSettings>>({
     brand_name: '',
@@ -131,35 +84,8 @@ function ProfileApp() {
     setLoading(authLoading);
   }, [authUser, authLoading]);
 
-  useEffect(() => {
-    if (!supabase || !user) {
-      setLicenseState((prev) => (prev.status === 'idle' ? prev : { status: 'idle' }));
-      return;
-    }
-    if (isAdminUser(user)) {
-      setLicenseState({ status: 'active', license: adminBypassLicense(user) });
-      return;
-    }
-    let cancelled = false;
-    setLicenseState({ status: 'checking' });
-    supabase
-      .from('licenses')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('expires_at', { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) { setLicenseState({ status: 'error', message: error.message }); return; }
-        const verdict = isLicenseValid((data ?? null) as License | null);
-        if (!verdict.ok) { setLicenseState({ status: 'inactive', reason: verdict.reason }); return; }
-        setLicenseState({ status: 'active', license: data as License });
-      });
-    return () => { cancelled = true; };
-  }, [supabase, user]);
-
   const canUse = useMemo(() => licenseState.status === 'active', [licenseState.status]);
+  const activeLicense = licenseState.status === 'active' ? licenseState.license : null;
 
   const fetchSettings = useCallback(async () => {
     const session = getStoredSession();
@@ -215,11 +141,10 @@ function ProfileApp() {
   }, [user]);
 
   const handleSaveSettings = useCallback(async () => {
-    if (!supabase) return;
     setSettingsSaving(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session.session?.access_token;
+      const session = getStoredSession();
+      const token = session?.token;
       if (!token) throw new Error('Sessione non valida');
 
       const res = await fetch('/api/settings', {
@@ -358,7 +283,7 @@ function ProfileApp() {
             <div>
               <p className="font-medium text-foreground">{user.email}</p>
               <p className="text-xs text-muted">
-                {isAdminUser(user) ? '🛡️ Amministratore' : `📋 Piano: ${licenseState.license?.plan ?? 'standard'}`}
+                {isAdminUser(user) ? '🛡️ Amministratore' : `📋 Piano: ${activeLicense?.plan ?? 'standard'}`}
               </p>
             </div>
           </div>
@@ -481,20 +406,20 @@ function ProfileApp() {
             <div className="p-4 rounded-xl bg-surface-hover border border-border">
               <p className="text-xs text-muted uppercase tracking-wide">Stato</p>
               <p className="text-lg font-semibold text-emerald-500 mt-1">
-                {licenseState.license?.status === 'active' ? '✅ Attiva' : licenseState.license?.status ?? '-'}
+                {activeLicense?.status === 'active' ? '✅ Attiva' : activeLicense?.status ?? '-'}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-surface-hover border border-border">
               <p className="text-xs text-muted uppercase tracking-wide">Piano</p>
               <p className="text-lg font-semibold text-foreground mt-1 capitalize">
-                {licenseState.license?.plan ?? 'standard'}
+                {activeLicense?.plan ?? 'standard'}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-surface-hover border border-border">
               <p className="text-xs text-muted uppercase tracking-wide">Scadenza</p>
               <p className="text-lg font-semibold text-foreground mt-1">
-                {licenseState.license?.expires_at 
-                  ? new Date(licenseState.license.expires_at).toLocaleDateString('it-IT') 
+                {activeLicense?.expires_at 
+                  ? new Date(activeLicense!.expires_at!).toLocaleDateString('it-IT') 
                   : '♾️ Illimitata'}
               </p>
             </div>

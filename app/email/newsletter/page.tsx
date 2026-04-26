@@ -6,14 +6,11 @@ import { useRouter } from 'next/navigation';
 
 import { ToastProvider, useToast } from '../../../components/Toaster';
 import { NewsletterModal } from '../../../components/NewsletterModal';
-import { useSupabaseSafe } from '../../../lib/supabase';
 import { EmailGate } from '../_components/EmailGate';
 import { AppLayout } from '../../../components/layout/AppLayout';
-import { getStoredSession } from '../../../lib/authClient';
-import { signOut } from '../../../lib/authClient';
+import { getStoredSession, signOut } from '../../../lib/authClient';
 
 function NewsletterInner({ userId }: { userId: string }) {
-  const supabase = useSupabaseSafe();
   const { push } = useToast();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -24,20 +21,23 @@ function NewsletterInner({ userId }: { userId: string }) {
   const canOpenModal = useMemo(() => !loadingCount && clientCount > 0, [loadingCount, clientCount]);
 
   useEffect(() => {
-    if (!supabase || !userId) return;
+    if (!userId) return;
     let cancelled = false;
 
     (async () => {
       setLoadingCount(true);
       try {
-        const res = await supabase
-          .from('clients')
-          .select('id', { count: 'exact', head: true })
-          .eq('owner_id', userId)
-          .not('email', 'is', null);
+        const session = getStoredSession();
+        const token = session?.token;
+        if (!token) throw new Error('Sessione non valida');
 
-        if (res.error) throw res.error;
-        if (!cancelled) setClientCount(res.count ?? 0);
+        const res = await fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Errore caricamento clienti');
+        const json = (await res.json()) as { clients?: { email?: string | null }[] };
+        if (!cancelled) {
+          const count = (json.clients ?? []).filter((c) => c.email?.trim()).length;
+          setClientCount(count);
+        }
       } catch (e: unknown) {
         if (!cancelled) push('error', e instanceof Error ? e.message : String(e));
       } finally {
@@ -45,15 +45,11 @@ function NewsletterInner({ userId }: { userId: string }) {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, userId, push]);
+    return () => { cancelled = true; };
+  }, [userId, push]);
 
   const handleSendNewsletter = useCallback(
     async (templateId: string) => {
-      if (!supabase) return;
-
       const session = getStoredSession();
       const token = session?.token;
       if (!token) {
@@ -83,16 +79,13 @@ function NewsletterInner({ userId }: { userId: string }) {
         setSending(false);
       }
     },
-    [supabase, push]
+    [push]
   );
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
       <header className="space-y-2">
-        <Link
-          href="/email"
-          className="inline-flex items-center gap-2 text-sm text-muted hover:text-foreground"
-        >
+        <Link href="/email" className="inline-flex items-center gap-2 text-sm text-muted hover:text-foreground">
           <span aria-hidden>←</span>
           Email
         </Link>
@@ -102,38 +95,37 @@ function NewsletterInner({ userId }: { userId: string }) {
         </div>
       </header>
 
-        <section className="rounded-2xl border border-border bg-surface/60 p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-foreground font-semibold">Destinatari</p>
-              <p className="text-sm text-muted">
-                {loadingCount ? 'Caricamento…' : `${clientCount} contatti con email`}
-              </p>
-            </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!canOpenModal || sending}
-              onClick={() => setModalOpen(true)}
-            >
-              Newsletter
-            </button>
+      <section className="rounded-2xl border border-border bg-surface/60 p-6 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-foreground font-semibold">Destinatari</p>
+            <p className="text-sm text-muted">
+              {loadingCount ? 'Caricamento…' : `${clientCount} contatti con email`}
+            </p>
           </div>
-        </section>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={!canOpenModal || sending}
+            onClick={() => setModalOpen(true)}
+          >
+            Newsletter
+          </button>
+        </div>
+      </section>
 
-        <NewsletterModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          onSend={handleSendNewsletter}
-          clientCount={clientCount}
-          sending={sending}
-        />
+      <NewsletterModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSend={handleSendNewsletter}
+        clientCount={clientCount}
+        sending={sending}
+      />
     </div>
   );
 }
 
 function NewsletterPageInner() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   return (
     <EmailGate title="Newsletter · Bitora CRM">
@@ -141,9 +133,7 @@ function NewsletterPageInner() {
         <AppLayout
           user={user}
           onLogout={async () => {
-            if (supabase) {
-              await signOut();
-            }
+            await signOut();
             router.push('/');
           }}
         >

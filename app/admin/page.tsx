@@ -9,11 +9,12 @@ import React, {
 import Link from 'next/link';
 import { ToastProvider, useToast } from '../../components/Toaster';
 import LoginForm from '../../components/LoginForm';
-import { useSupabaseSafe } from '../../lib/supabase';
 import { useAuth } from '../../lib/useAuth';
+import { getStoredSession } from '../../lib/authClient';
 import type { User } from '../../lib/auth';
 import { Client, License } from '../../types';
 import { normalizeClient } from '../../lib/normalizeClient';
+import { isAdminUser } from '../../lib/useLicense';
 
 const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS ?? '')
   .split(',')
@@ -68,10 +69,7 @@ function isLicenseCurrentlyActive(license: License): boolean {
 }
 
 function AdminApp() {
-  const supabase = useSupabaseSafe();
   const { push } = useToast();
-  
-  // Hook deve essere chiamato al livello superiore
   const { user: authUser, loading: authLoading } = useAuth();
   
   const [isMounted, setIsMounted] = useState(false);
@@ -102,91 +100,50 @@ function AdminApp() {
       setAdminStatus('unknown');
       return;
     }
-
-    const envAdmin = Boolean(user.email && ADMIN_EMAILS.includes(user.email.toLowerCase()));
-    const metadataAdmin = Boolean(user.user_metadata?.is_admin || user.app_metadata?.role === 'admin');
-
-    if (!supabase) {
-      setAdminStatus(envAdmin || metadataAdmin ? 'granted' : 'denied');
-      return;
-    }
-
-    if (envAdmin || metadataAdmin) {
-      setAdminStatus('granted');
-      return;
-    }
-
-    let cancelled = false;
-    setAdminStatus('checking');
-
-    supabase
-      .from('admin_users')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error('Errore durante la verifica admin', error);
-          setAdminStatus('denied');
-          return;
-        }
-        setAdminStatus(data ? 'granted' : 'denied');
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, user]);
+    setAdminStatus(isAdminUser(user) ? 'granted' : 'denied');
+  }, [user]);
 
   useEffect(() => {
-    if (!supabase || adminStatus !== 'granted') return;
+    if (adminStatus !== 'granted') return;
 
     let cancelled = false;
     const fetchData = async () => {
       setLoadingData(true);
       setDataError(null);
       try {
+        const session = getStoredSession();
+        const token = session?.token;
+        if (!token) throw new Error('Sessione non valida');
+
         const [clientsRes, licensesRes] = await Promise.all([
-          supabase
-            .from('clients')
-            .select('id, owner_id, first_name, last_name, address, phone, email, notes, tags, status, first_contacted_at, lat, lon, created_at')
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('licenses')
-            .select('*')
-            .order('created_at', { ascending: false }),
+          fetch('/api/admin/clients', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/admin/licenses', { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
         if (cancelled) return;
 
-        if (clientsRes.error) {
-          throw clientsRes.error;
-        }
-        if (licensesRes.error) {
-          throw licensesRes.error;
-        }
+        const clientsJson = (await clientsRes.json()) as { clients?: Client[]; error?: string };
+        const licensesJson = (await licensesRes.json()) as { licenses?: License[]; error?: string };
 
-        const normalizedClients = (clientsRes.data ?? []).map((row) => normalizeClient(row as Client));
+        if (!clientsRes.ok) throw new Error(clientsJson.error ?? 'Errore clienti');
+        if (!licensesRes.ok) throw new Error(licensesJson.error ?? 'Errore licenze');
+
+        const normalizedClients = (clientsJson.clients ?? []).map((row) => normalizeClient(row as Client));
         setClients(normalizedClients);
-        setLicenses((licensesRes.data ?? []) as License[]);
+        setLicenses((licensesJson.licenses ?? []) as License[]);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : JSON.stringify(error, null, 2);
         console.error('[admin] errore caricamento dati', error);
         setDataError(message);
       } finally {
-        if (!cancelled) {
-          setLoadingData(false);
-        }
+        if (!cancelled) setLoadingData(false);
       }
     };
 
     fetchData();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, adminStatus, refreshToken]);
+    return () => { cancelled = true; };
+  }, [adminStatus, refreshToken]);
 
   const resetForm = useCallback(() => {
     setLicenseForm(defaultFormState);
@@ -210,8 +167,6 @@ function AdminApp() {
   }, []);
 
   const handleSubmitForm = useCallback(async () => {
-    if (!supabase) return;
-
     const trimmedUserId = licenseForm.userId.trim();
     if (!trimmedUserId) {
       setFormError('Specifica un user_id valido (UUID).');
@@ -237,19 +192,31 @@ function AdminApp() {
       metadata,
     };
 
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) { setFormError('Sessione non valida.'); return; }
+
     setSubmitting(true);
     setFormError(null);
 
     try {
+      let res: Response;
       if (licenseForm.id) {
-        const { error } = await supabase.from('licenses').update(payload).eq('id', licenseForm.id);
-        if (error) throw error;
-        push('success', 'Licenza aggiornata con successo.');
+        res = await fetch(`/api/admin/licenses/${licenseForm.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
       } else {
-        const { error } = await supabase.from('licenses').insert(payload);
-        if (error) throw error;
-        push('success', 'Licenza creata con successo.');
+        res = await fetch('/api/admin/licenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
       }
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(json.error ?? 'Errore');
+      push('success', licenseForm.id ? 'Licenza aggiornata con successo.' : 'Licenza creata con successo.');
       resetForm();
       handleRefresh();
     } catch (error: unknown) {
@@ -258,22 +225,25 @@ function AdminApp() {
     } finally {
       setSubmitting(false);
     }
-  }, [supabase, licenseForm, push, resetForm, handleRefresh]);
+  }, [licenseForm, push, resetForm, handleRefresh]);
 
   const handleRevoke = useCallback(
     async (license: License) => {
-      if (!supabase) return;
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) { push('error', 'Sessione non valida.'); return; }
+
       setSubmitting(true);
       try {
-        const { error } = await supabase
-          .from('licenses')
-          .update({ status: 'inactive', expires_at: null })
-          .eq('id', license.id);
-        if (error) throw error;
+        const res = await fetch(`/api/admin/licenses/${license.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ status: 'inactive', expires_at: null }),
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? 'Errore');
         push('info', 'Licenza revocata.');
-        if (licenseForm.id === license.id) {
-          resetForm();
-        }
+        if (licenseForm.id === license.id) resetForm();
         handleRefresh();
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -282,7 +252,7 @@ function AdminApp() {
         setSubmitting(false);
       }
     },
-    [supabase, push, handleRefresh, licenseForm.id, resetForm]
+    [push, handleRefresh, licenseForm.id, resetForm]
   );
 
   const isLoading = authLoading || adminStatus === 'checking';
@@ -346,19 +316,6 @@ function AdminApp() {
       <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col items-center justify-center gap-4">
         <div className="h-12 w-12 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
         <p className="text-sm text-neutral-400">Caricamento...</p>
-      </div>
-    );
-  }
-
-  if (!supabase) {
-    return (
-      <div className="min-h-screen bg-neutral-950 text-neutral-200 flex flex-col items-center justify-center px-6 text-center">
-        <div className="max-w-md space-y-4">
-          <h2 className="text-2xl font-semibold text-neutral-50">Configurazione mancante</h2>
-          <p className="text-sm text-neutral-400">
-            Il client Supabase non è configurato. Verifica le variabili NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.
-          </p>
-        </div>
       </div>
     );
   }

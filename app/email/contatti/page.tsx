@@ -6,19 +6,16 @@ import { useRouter } from 'next/navigation';
 
 import { ToastProvider, useToast } from '../../../components/Toaster';
 import { EmailGate } from '../_components/EmailGate';
-import { useSupabaseSafe } from '../../../lib/supabase';
 import { normalizeClient } from '../../../lib/normalizeClient';
 import type { Client, EmailTemplate } from '../../../types';
 import { AppLayout } from '../../../components/layout/AppLayout';
-import { getStoredSession } from '../../../lib/authClient';
-import { signOut } from '../../../lib/authClient';
+import { getStoredSession, signOut } from '../../../lib/authClient';
 
 function renderTemplate(input: string, vars: Record<string, string>): string {
   return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, key: string) => vars[key] ?? '');
 }
 
 function ContattiInner({ userId }: { userId: string }) {
-  const supabase = useSupabaseSafe();
   const { push } = useToast();
 
   const [clients, setClients] = useState<Client[]>([]);
@@ -63,26 +60,28 @@ function ContattiInner({ userId }: { userId: string }) {
   const selectedCount = selectedClientIds.length;
 
   const loadData = useCallback(async () => {
-    if (!supabase || !userId) return;
+    if (!userId) return;
+    const session = getStoredSession();
+    const token = session?.token;
+    if (!token) throw new Error('Sessione non valida');
 
     const [clientsRes, templatesRes] = await Promise.all([
-      supabase
-        .from('clients')
-        .select('id, owner_id, first_name, last_name, email, phone, notes, tags, status, first_contacted_at, created_at')
-        .eq('owner_id', userId)
-        .order('created_at', { ascending: false }),
-      supabase.from('email_templates').select('*').eq('owner_id', userId).order('updated_at', { ascending: false }),
+      fetch('/api/clients', { headers: { Authorization: `Bearer ${token}` } }),
+      fetch('/api/email/templates', { headers: { Authorization: `Bearer ${token}` } }),
     ]);
 
-    if (clientsRes.error) throw clientsRes.error;
-    if (templatesRes.error) throw templatesRes.error;
+    const clientsJson = (await clientsRes.json()) as { clients?: Client[]; error?: string };
+    const templatesJson = (await templatesRes.json()) as { templates?: EmailTemplate[]; error?: string };
 
-    setClients(((clientsRes.data ?? []) as Client[]).map(normalizeClient));
-    setTemplates((templatesRes.data ?? []) as EmailTemplate[]);
-  }, [supabase, userId]);
+    if (!clientsRes.ok) throw new Error(clientsJson.error ?? 'Errore clienti');
+    if (!templatesRes.ok) throw new Error(templatesJson.error ?? 'Errore template');
+
+    setClients((clientsJson.clients ?? []).map(normalizeClient));
+    setTemplates(templatesJson.templates ?? []);
+  }, [userId]);
 
   useEffect(() => {
-    if (!supabase || !userId) return;
+    if (!userId) return;
     let cancelled = false;
 
     (async () => {
@@ -97,7 +96,7 @@ function ContattiInner({ userId }: { userId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [supabase, userId, loadData, push]);
+  }, [userId, loadData, push]);
 
   const selectedTemplate = useMemo(
     () => templates.find((t) => t.id === selectedTemplateId) ?? null,
@@ -141,7 +140,6 @@ function ContattiInner({ userId }: { userId: string }) {
   }, [eligibleClientIds]);
 
   const handleSendSelected = useCallback(async () => {
-    if (!supabase) return;
     if (!selectedTemplateId) {
       push('error', 'Seleziona un template.');
       return;
@@ -198,12 +196,10 @@ function ContattiInner({ userId }: { userId: string }) {
       setSending(false);
       setSendProgress(null);
     }
-  }, [supabase, selectedTemplateId, selectedClientIds, push, loadData]);
+  }, [selectedTemplateId, selectedClientIds, push, loadData]);
 
   const handleSaveNotes = useCallback(
     async (clientId: string) => {
-      if (!supabase) return;
-
       const client = clients.find((c) => c.id === clientId);
       if (!client) return;
 
@@ -211,15 +207,19 @@ function ContattiInner({ userId }: { userId: string }) {
       const currentValue = (client.notes ?? '').trim();
       if (nextValue === currentValue) return;
 
+      const session = getStoredSession();
+      const token = session?.token;
+      if (!token) { push('error', 'Sessione non valida.'); return; }
+
       setSavingNotes((prev) => ({ ...prev, [clientId]: true }));
       try {
-        const { error } = await supabase
-          .from('clients')
-          .update({ notes: nextValue.length ? nextValue : null })
-          .eq('id', clientId)
-          .eq('owner_id', userId);
-
-        if (error) throw error;
+        const res = await fetch(`/api/clients/${clientId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ notes: nextValue.length ? nextValue : null }),
+        });
+        const json = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(json.error ?? 'Errore salvataggio note');
 
         setClients((prev) => prev.map((c) => (c.id === clientId ? { ...c, notes: nextValue.length ? nextValue : null } : c)));
         setNotesDraft((prev) => {
@@ -234,7 +234,7 @@ function ContattiInner({ userId }: { userId: string }) {
         setSavingNotes((prev) => ({ ...prev, [clientId]: false }));
       }
     },
-    [supabase, clients, notesDraft, userId, push]
+    [clients, notesDraft, push]
   );
 
   const detailClient = useMemo(() => {
@@ -619,7 +619,6 @@ function ContattiInner({ userId }: { userId: string }) {
 }
 
 function ContattiPageInner() {
-  const supabase = useSupabaseSafe();
   const router = useRouter();
   return (
     <EmailGate title="Contatti · Bitora CRM">
@@ -627,9 +626,7 @@ function ContattiPageInner() {
         <AppLayout
           user={user}
           onLogout={async () => {
-            if (supabase) {
-              await signOut();
-            }
+            await signOut();
             router.push('/');
           }}
         >

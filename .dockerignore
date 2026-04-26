@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+
+# Build output
+.next
+
+# Local env files — injected by Coolify at runtime
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# Dev / CI
+.eslintcache
+*.log
+coverage
+.nyc_output
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Docker files themselves
+Dockerfile*
+.dockerignore
+
+# Docs (not needed at runtime)
+docs
+README.md
+mysql

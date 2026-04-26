@@ -6,12 +6,13 @@ import { DeleteClientButton } from './DeleteClientButton';
 
 interface ClientDesktopTableProps {
   clients: Client[];
+  onAddClient?: () => void;
   onSelect: (client: Client) => void;
   onEdit: (client: Client) => void;
   onDeleted: (clientId: string) => void;
 }
 
-export function ClientDesktopTable({ clients, onSelect, onEdit, onDeleted }: ClientDesktopTableProps) {
+export function ClientDesktopTable({ clients, onAddClient, onSelect, onEdit, onDeleted }: ClientDesktopTableProps) {
   return (
     <div className="hidden lg:block table-container overflow-hidden">
       <table className="min-w-full">
@@ -39,6 +40,11 @@ export function ClientDesktopTable({ clients, onSelect, onEdit, onDeleted }: Cli
                     <p className="text-foreground font-medium">Nessun cliente trovato</p>
                     <p className="text-sm text-muted mt-1">Aggiungi un nuovo cliente per iniziare</p>
                   </div>
+                  {onAddClient && (
+                    <button type="button" onClick={onAddClient} className="btn btn-primary mt-2">
+                      Nuovo cliente
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
